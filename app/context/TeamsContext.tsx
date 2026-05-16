@@ -11,14 +11,14 @@ interface TeamsContextValue {
     matchDay: string;
     season: string;
     sport: 'Rugby' | 'Football';
-    championship: 'Top 14' | 'Pro D2';
+    championship: 'Top 14' | 'Pro D2' | 'W6N';
     setRosters: React.Dispatch<React.SetStateAction<Roster[]>>;
     setTeams: React.Dispatch<React.SetStateAction<Team[]>>;
     setActiveRosterId: React.Dispatch<React.SetStateAction<string | null>>;
     setMatchDay: React.Dispatch<React.SetStateAction<string>>;
     setSeason: React.Dispatch<React.SetStateAction<string>>;
     setSport: React.Dispatch<React.SetStateAction<'Rugby' | 'Football'>>;
-    setChampionship: React.Dispatch<React.SetStateAction<'Top 14' | 'Pro D2'>>;
+    setChampionship: React.Dispatch<React.SetStateAction<'Top 14' | 'Pro D2' | 'W6N'>>;
 }
 
 const TeamsContext = createContext<TeamsContextValue | null>(null);
@@ -31,7 +31,7 @@ export function TeamsProvider({ children }: { children: React.ReactNode }) {
     const [matchDay, setMatchDay] = useState<string>('');
     const [season, setSeason] = useState<string>(CURRENT_SEASON);
     const [sport, setSport] = useState<'Rugby' | 'Football'>('Rugby');
-    const [championship, setChampionship] = useState<'Top 14' | 'Pro D2'>('Top 14');
+    const [championship, setChampionship] = useState<'Top 14' | 'Pro D2' | 'W6N'>('Top 14');
 
     const lastSent = React.useRef<{
         rosters: Roster[];
@@ -40,7 +40,7 @@ export function TeamsProvider({ children }: { children: React.ReactNode }) {
         matchDay: string;
         season: string;
         sport: 'Rugby' | 'Football';
-        championship: 'Top 14' | 'Pro D2';
+        championship: 'Top 14' | 'Pro D2' | 'W6N';
     } | null>(null);
 
   // load from backend on mount

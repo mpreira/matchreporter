@@ -47,7 +47,7 @@ function getRosterBackPath(rosterId: string | null | undefined): string {
 
 export default function PlayerProfilePage() {
   const { rosterId: shortRosterId, playerId: shortPlayerId } = useParams();
-  const { rosters, teams, setRosters } = useTeams();
+  const { rosters, teams, setRosters, championship } = useTeams();
   
   // Convert short IDs to full IDs
   const rosterId = useMemo(
@@ -166,7 +166,7 @@ export default function PlayerProfilePage() {
         <section className="sp-panel space-y-3 md:col-span-2">
           <h2 className="font-semibold">Informations</h2>
           <p className="text-sm text-neutral-200">
-            <strong>Postes:</strong>{" "}
+            <strong>Postes :</strong>{" "}
             {player.positions && player.positions.length > 0
               ? player.positions.join(" / ")
               : "Non renseignés"}
@@ -175,7 +175,7 @@ export default function PlayerProfilePage() {
             const country = getCountryByCode(player.nationality);
             return (
               <p className="text-sm text-neutral-200 flex items-center gap-1.5">
-                <strong>Nationalité:</strong>
+                <strong>Nationalité :</strong>
                 <img
                   src={getFlagUrl(player.nationality)}
                   alt={country?.name ?? player.nationality}
@@ -187,6 +187,11 @@ export default function PlayerProfilePage() {
               </p>
             );
           })()}
+          {championship === "W6N" && (
+            <p className="text-sm text-neutral-200">
+              <strong>Club :</strong> {player.club ?? "Non renseigné"}
+            </p>
+          )}
         </section>
 
         {player.photoUrl && (

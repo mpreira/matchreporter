@@ -16,14 +16,18 @@ function getRosterIdFromParam(rosterSlugId: string | undefined): string | null {
     return rosterSlugId.slice(idx + 1);
 }
 
-function getRosterPath(category: "Top 14" | "Pro D2" | undefined, name: string, id: string) {
-    const championshipSlug = category === "Pro D2" ? "prod2" : "top14";
-    const slug = name
-        .toLowerCase()
-        .trim()
-        .replace(/[^a-z0-9]+/g, "_")
-        .replace(/^_+|_+$/g, "");
-    return `/roster/${championshipSlug}/${slug}_${id}`;
+function getRosterPath(
+  category: "Top 14" | "Pro D2" | "W6N" | undefined,
+  name: string,
+  id: string,
+) {
+  const championshipSlug = category === "Pro D2" ? "prod2" : category === "W6N" ? "w6n" : "top14";
+  const slug = name
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return `/roster/${championshipSlug}/${slug}_${id}`;
 }
 
 export default function RosterRedirectPage() {

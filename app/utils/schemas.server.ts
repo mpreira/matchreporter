@@ -60,6 +60,7 @@ const titleSchema = z.object({
   competition: z.string().min(1),
   ranking: z.string().min(1),
   year: z.number(),
+  grandSlam: z.boolean().nullable().optional(),
 }).passthrough();
 
 const matchFixtureSchema = z.object({
@@ -122,7 +123,7 @@ export const rosterStatePayloadSchema = z.object({
   matchDay: z.string().optional(),
   season: z.string().optional(),
   sport: z.enum(["Rugby", "Football"]).optional(),
-  championship: z.enum(["Top 14", "Pro D2"]).optional(),
+  championship: z.enum(["Top 14", "Pro D2", "W6N"]).optional(),
 });
 
 // POST /api/account — discriminated union by intent

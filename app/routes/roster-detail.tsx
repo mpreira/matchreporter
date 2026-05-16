@@ -80,12 +80,14 @@ export default function RosterDetailPage() {
         setTeams,
         setActiveRosterId,
         matchDay,
+        championship,
     } = useTeams();
 
     const [showAddPlayerForm, setShowAddPlayerForm] = useState(false);
     const [newPlayerFirst, setNewPlayerFirst] = useState("");
     const [newPlayerLast, setNewPlayerLast] = useState("");
     const [newPlayerPositions, setNewPlayerPositions] = useState<PlayerPosition[]>([]);
+    const [newPlayerClub, setNewPlayerClub] = useState("");
     const [newPlayerPhotoUrl, setNewPlayerPhotoUrl] = useState("");
     const [newPlayerNationality, setNewPlayerNationality] = useState("");
     const [compositionMessage, setCompositionMessage] = useState("");
@@ -94,6 +96,7 @@ export default function RosterDetailPage() {
     const [editingPlayerFirst, setEditingPlayerFirst] = useState("");
     const [editingPlayerLast, setEditingPlayerLast] = useState("");
     const [editingPlayerPositions, setEditingPlayerPositions] = useState<PlayerPosition[]>([]);
+    const [editingPlayerClub, setEditingPlayerClub] = useState("");
     const [editingPlayerPhotoUrl, setEditingPlayerPhotoUrl] = useState("");
     const [editingPlayerNationality, setEditingPlayerNationality] = useState("");
     const [newPlayerFirstError, setNewPlayerFirstError] = useState("");
@@ -406,7 +409,8 @@ export default function RosterDetailPage() {
             formattedLast,
             newPlayerPositions,
             newPlayerPhotoUrl,
-            newPlayerNationality || undefined
+            newPlayerNationality || undefined,
+            championship === "W6N" ? newPlayerClub : undefined
         );
         const updatedRoster = addPlayerToRosterList(roster, player);
 
@@ -420,13 +424,14 @@ export default function RosterDetailPage() {
         setNewPlayerFirst("");
         setNewPlayerLast("");
         setNewPlayerPositions([]);
+        setNewPlayerClub("");
         setNewPlayerPhotoUrl("");
         setNewPlayerNationality("");
         setNewPlayerFirstError("");
         setNewPlayerLastError("");
     }
 
-    function startEditPlayer(player: { id: string; name: string; positions?: PlayerPosition[]; photoUrl?: string; nationality?: string }) {
+    function startEditPlayer(player: { id: string; name: string; positions?: PlayerPosition[]; photoUrl?: string; nationality?: string; club?: string }) {
         const { first, last } = parsePlayerName(player.name);
         const formattedFirst = formatName(first);
         const formattedLast = formatName(last);
@@ -434,6 +439,7 @@ export default function RosterDetailPage() {
         setEditingPlayerFirst(formattedFirst);
         setEditingPlayerLast(formattedLast);
         setEditingPlayerPositions(player.positions ?? []);
+        setEditingPlayerClub(player.club ?? "");
         setEditingPlayerPhotoUrl(player.photoUrl ?? "");
         setEditingPlayerNationality(player.nationality ?? "");
         setEditingPlayerFirstError(validateName(formattedFirst));
@@ -446,6 +452,7 @@ export default function RosterDetailPage() {
         setEditingPlayerFirst("");
         setEditingPlayerLast("");
         setEditingPlayerPositions([]);
+        setEditingPlayerClub("");
         setEditingPlayerPhotoUrl("");
         setEditingPlayerNationality("");
         setEditingPlayerFirstError("");
@@ -463,12 +470,14 @@ export default function RosterDetailPage() {
         if (firstError || lastError) return;
         if (!editingPlayerFirst && !editingPlayerLast) return;
         const newName = `${formattedFirst} ${formattedLast}`.trim();
-        const updatedRoster = updatePlayerInRoster(roster, editingPlayerId, {
+        const playerUpdates = {
             name: newName,
             positions: editingPlayerPositions,
             photoUrl: editingPlayerPhotoUrl,
             nationality: editingPlayerNationality || undefined,
-        });
+            ...(championship === "W6N" ? { club: editingPlayerClub || undefined } : {}),
+        };
+        const updatedRoster = updatePlayerInRoster(roster, editingPlayerId, playerUpdates);
         setRosters(rosters.map((r) => (r.id === roster.id ? syncRosterCurrentSeason(updatedRoster) : r)));
         cancelEditPlayer();
         setPlayerMessage("Joueur modifié.");
@@ -859,6 +868,18 @@ export default function RosterDetailPage() {
                                     ))}
                                 </div>
                             )}
+                            {championship === "W6N" && (
+                                <div className="sp-input-shell">
+                                    <label className="sp-input-label" htmlFor="newPlayerClub">Club (facultatif)</label>
+                                    <input
+                                        id="newPlayerClub"
+                                        className="sp-input-control"
+                                        placeholder="ex. Stade Bordelais"
+                                        value={newPlayerClub}
+                                        onChange={(event) => setNewPlayerClub(event.target.value)}
+                                    />
+                                </div>
+                            )}
                             <div className="sp-input-shell">
                                 <label className="sp-input-label" htmlFor="newPlayerPhotoUrl">Photo (URL ou upload)</label>
                                 <input
@@ -997,6 +1018,18 @@ export default function RosterDetailPage() {
                                             {position} x
                                         </button>
                                     ))}
+                                </div>
+                            )}
+                            {championship === "W6N" && (
+                                <div className="sp-input-shell">
+                                    <label className="sp-input-label" htmlFor="editingPlayerClub">Club (facultatif)</label>
+                                    <input
+                                        id="editingPlayerClub"
+                                        className="sp-input-control"
+                                        placeholder="ex. Stade Bordelais"
+                                        value={editingPlayerClub}
+                                        onChange={(event) => setEditingPlayerClub(event.target.value)}
+                                    />
                                 </div>
                             )}
                             <div className="sp-input-shell">

@@ -137,7 +137,7 @@ Content-Type: application/json
 {
   "rosterId": "e525c291-be7d-4176-8f0c-c8e741b80642",
   "competition": "Top 14",
-  "ranking": "Vainqueur",
+  "ranking": "Champion.ne",
   "year": 2025
 }
 
@@ -149,7 +149,7 @@ PATCH {{base}}/api/titles?id=1
 Content-Type: application/json
 
 {
-  "ranking": "Finaliste"
+  "ranking": "Champion.ne"
 }
 
 ### Supprimer un titre

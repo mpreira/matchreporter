@@ -42,6 +42,8 @@ const POSITION_PRIORITY: PlayerPosition[] = [
   "arrière",
 ];
 
+const TITLE_RANKING_OPTIONS: Title["ranking"][] = ["Champion.ne", "Vice-Champion.ne", "3e"];
+
 function getPositionRank(positions?: PlayerPosition[]): number {
   if (!positions || positions.length === 0) return POSITION_PRIORITY.length;
   const rankedPositions = positions
@@ -285,14 +287,30 @@ export default function RosterProfilePage() {
   }
 
   function addTitleRow() {
-    setTitlesDraft((prev) => [...prev, { competition: "", ranking: "Vainqueur", year: new Date().getFullYear() }]);
+    setTitlesDraft((prev) => [...prev, { competition: "", ranking: "Champion.ne", year: new Date().getFullYear() }]);
+  }
+
+  function isW6NCompetition(competition: string) {
+    const normalized = competition.trim().toLowerCase();
+    return normalized === "w6n" || normalized === "women's six nations" || normalized === "womens six nations";
+  }
+
+  function formatTitleSummary(title: Title) {
+    const grandSlamSuffix = isW6NCompetition(title.competition) && title.ranking === "Champion.ne"
+      ? title.grandSlam === true
+        ? " - Grand Chelem"
+        : title.grandSlam === false
+          ? " - Sans Grand Chelem"
+          : ""
+      : "";
+    return `${title.competition} - ${title.ranking}${grandSlamSuffix}`;
   }
 
   function removeTitleRow(index: number) {
     setTitlesDraft((prev) => prev.filter((_, i) => i !== index));
   }
 
-  function updateTitleDraft(index: number, field: keyof Title, value: string | number) {
+  function updateTitleDraft(index: number, field: keyof Title, value: string | number | boolean) {
     setTitlesDraft((prev) =>
       prev.map((t, i) => (i === index ? { ...t, [field]: value } : t)),
     );
@@ -300,7 +318,14 @@ export default function RosterProfilePage() {
 
   function saveTitles() {
     if (!roster) return;
-    const cleaned = titlesDraft.filter((t) => t.competition.trim() && t.year > 0);
+    const cleaned = titlesDraft
+      .filter((t) => t.competition.trim() && t.year > 0)
+      .map((t) => ({
+        ...t,
+        grandSlam: isW6NCompetition(t.competition) && t.ranking === "Champion.ne"
+          ? t.grandSlam
+          : undefined,
+      }));
     setRosters((current) =>
       current.map((item) =>
         item.id === roster.id ? { ...item, titles: cleaned.length > 0 ? cleaned : undefined } : item,
@@ -485,7 +510,7 @@ export default function RosterProfilePage() {
                     ? (() => {
                         const grouped = new Map<string, string[]>();
                         for (const t of roster.titles) {
-                          const key = `${t.competition} - ${t.ranking}`;
+                          const key = formatTitleSummary(t);
                           const years = grouped.get(key) ?? [];
                           years.push(String(t.year));
                           grouped.set(key, years);
@@ -516,14 +541,18 @@ export default function RosterProfilePage() {
               <div className="mt-2 space-y-2">
                 {titlesDraft.map((title, index) => (
                   <div key={index} className="flex items-center gap-2">
-                    <input
+                    <select
                       className="sp-input-control text-sm flex-1"
-                      placeholder="Compétition"
                       value={title.competition}
                       onChange={(e) =>
                         updateTitleDraft(index, "competition", e.target.value)
                       }
-                    />
+                    >
+                      <option value="">— Compétition —</option>
+                      {['Top 14', 'Pro D2', "Women's Six Nations", 'Six Nations', "Coupe d'Europe", 'Challenge Cup'].map((opt) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
                     <select
                       className="sp-input-control text-sm w-32"
                       value={title.ranking}
@@ -531,9 +560,27 @@ export default function RosterProfilePage() {
                         updateTitleDraft(index, "ranking", e.target.value)
                       }
                     >
-                      <option value="Vainqueur">Vainqueur</option>
-                      <option value="Finaliste">Finaliste</option>
+                      {TITLE_RANKING_OPTIONS.map((option) => (
+                        <option key={option} value={option}>{option}</option>
+                      ))}
                     </select>
+                    {isW6NCompetition(title.competition) && title.ranking === "Champion.ne" && (
+                      <select
+                        className="sp-input-control text-sm w-44"
+                        value={title.grandSlam === true ? "yes" : title.grandSlam === false ? "no" : ""}
+                        onChange={(e) =>
+                          updateTitleDraft(
+                            index,
+                            "grandSlam",
+                            e.target.value === "yes" ? true : e.target.value === "no" ? false : ""
+                          )
+                        }
+                      >
+                        <option value="">Grand Chelem ?</option>
+                        <option value="yes">Oui</option>
+                        <option value="no">Non</option>
+                      </select>
+                    )}
                     <input
                       type="number"
                       className="sp-input-control text-sm w-20"
