@@ -50,10 +50,10 @@ export default function RosterManager({
     const [newRosterPresident, setNewRosterPresident] = useState("");
     const [newRosterFoundedIn, setNewRosterFoundedIn] = useState("");
     const [newRosterTitles, setNewRosterTitles] = useState("");
-    const [newRosterCategory, setNewRosterCategory] = useState<'Top 14' | 'Pro D2'>('Top 14');
-    const championshipOptions = ['Top 14', 'Pro D2'] as const;
+    const [newRosterCategory, setNewRosterCategory] = useState<'Top 14' | 'Pro D2' | 'Women\'s Six Nations' | 'World Series'>('Top 14');
+    const championshipOptions = ['Top 14', 'Pro D2', 'Women\'s Six Nations', 'World Series'] as const;
     const [showCreateRosterForm, setShowCreateRosterForm] = useState(false);
-    const [activeCategoryTab, setActiveCategoryTab] = useState<'Top 14' | 'Pro D2'>('Top 14');
+    const [activeCategoryTab, setActiveCategoryTab] = useState<'Top 14' | 'Pro D2' | 'Women\'s Six Nations' | 'World Series'>('Top 14');
     const [rosterFeedbackMessage, setRosterFeedbackMessage] = useState("");
     const [newPlayerFirst, setNewPlayerFirst] = useState("");
     const [newPlayerLast, setNewPlayerLast] = useState("");
@@ -438,6 +438,26 @@ export default function RosterManager({
                 >
                     Pro D2
                 </button>
+                <button
+                    className={`px-3 py-2 rounded border text-sm font-medium transition-colors ${
+                        activeCategoryTab === 'Women\'s Six Nations'
+                            ? 'border-blue-500 bg-blue-500/20 text-blue-300'
+                            : 'border-neutral-700 bg-neutral-900 text-neutral-300 hover:bg-neutral-800'
+                    }`}
+                    onClick={() => setActiveCategoryTab('Women\'s Six Nations')}
+                >
+                    W6N
+                </button>
+                <button
+                    className={`px-3 py-2 rounded border text-sm font-medium transition-colors ${
+                        activeCategoryTab === 'World Series'
+                            ? 'border-blue-500 bg-blue-500/20 text-blue-300'
+                            : 'border-neutral-700 bg-neutral-900 text-neutral-300 hover:bg-neutral-800'
+                    }`}
+                    onClick={() => setActiveCategoryTab('World Series')}
+                >
+                    World Series
+                </button>
             </div>
             <button
                 className="sp-button sp-button-sm sp-button-indigo"
@@ -465,7 +485,7 @@ export default function RosterManager({
                                 id="newRosterCategory"
                                 className="sp-input-control"
                                 value={newRosterCategory}
-                                onChange={(e) => setNewRosterCategory(e.target.value as 'Top 14' | 'Pro D2')}
+                                onChange={(e) => setNewRosterCategory(e.target.value as 'Top 14' | 'Pro D2' | 'Women\'s Six Nations' | 'World Series')}
                             >
                                 {championshipOptions.map((option) => (
                                     <option key={option} value={option}>

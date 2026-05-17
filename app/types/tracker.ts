@@ -101,7 +101,7 @@ export interface Roster {
     presidentData?: President;
     players: Player[]; // effectif global (mirrors current season)
     seasons?: Record<string, SeasonData>;
-    category?: 'Top 14' | 'Pro D2';
+    category?: 'Top 14' | 'Pro D2' | 'Women\'s Six Nations' | 'World Series';
     founded_in?: number; // year of creation
     titles?: Title[]; // list of titles won
     currentRanking?: number; // current league ranking

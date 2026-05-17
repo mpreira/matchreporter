@@ -7,7 +7,7 @@ import type { Roster, Team } from "~/types/tracker";
 import { rosterStatePayloadSchema } from "~/utils/schemas.server";
 
 type Sport = "Rugby" | "Football";
-type Championship = "Top 14" | "Pro D2";
+type Championship = "Top 14" | "Pro D2" | "Women's Six Nations" | "World Series";
 
 export interface RosterStatePayload {
   rosters: Roster[];
@@ -1275,6 +1275,26 @@ export async function getRostersState(): Promise<RosterStatePayload> {
   return getRostersStateForAccount(LEGACY_ACCOUNT_ID);
 }
 
+const CHAMPIONSHIP_ALIASES: Record<string, Championship> = {
+  "W6N": "Women's Six Nations",
+  "Women's 6 Nations": "Women's Six Nations",
+};
+
+function normalizeRosterStatePayload(payload: RosterStatePayload): RosterStatePayload {
+  const normalizeChampionship = (v?: string): Championship | undefined => {
+    if (!v) return undefined;
+    return (CHAMPIONSHIP_ALIASES[v] ?? v) as Championship;
+  };
+  return {
+    ...payload,
+    championship: normalizeChampionship(payload.championship),
+    rosters: (payload.rosters ?? []).map((r) => ({
+      ...r,
+      category: r.category ? (CHAMPIONSHIP_ALIASES[r.category] ?? r.category) : r.category,
+    })),
+  };
+}
+
 export async function getRostersStateForAccount(accountId: string): Promise<RosterStatePayload> {
   await ensureInitialized();
   const pool = getPool();
@@ -1287,7 +1307,8 @@ export async function getRostersStateForAccount(accountId: string): Promise<Rost
 
   if (!row) return defaultRosterState;
   const parsed = parseJsonOrNull<RosterStatePayload>(row.payload);
-  return parsed ?? defaultRosterState;
+  if (!parsed) return defaultRosterState;
+  return normalizeRosterStatePayload(parsed);
 }
 
 export async function saveRostersState(payload: RosterStatePayload): Promise<void> {
