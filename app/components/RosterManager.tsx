@@ -49,13 +49,11 @@ export default function RosterManager({
     const [newRosterCoach, setNewRosterCoach] = useState("");
     const [newRosterPresident, setNewRosterPresident] = useState("");
     const [newRosterFoundedIn, setNewRosterFoundedIn] = useState("");
-    const [newRosterTitles, setNewRosterTitles] = useState<Title[]>([{ competition: "", ranking: "Champion.ne", year: new Date().getFullYear() }]);
-    const [newRosterCategory, setNewRosterCategory] = useState<'Top 14' | 'Pro D2' | 'W6N'>('Top 14');
-    const championshipOptions = ['Top 14', 'Pro D2', 'W6N'] as const;
-    const titleCompetitionOptions: Title["competition"][] = ['Top 14', 'Pro D2', "Women's Six Nations", 'Six Nations', "Coupe d'Europe", 'Challenge Cup'];
-    const titleRankingOptions: Title["ranking"][] = ['Champion.ne', 'Vice-Champion.ne', '3e'];
+    const [newRosterTitles, setNewRosterTitles] = useState("");
+    const [newRosterCategory, setNewRosterCategory] = useState<'Top 14' | 'Pro D2'>('Top 14');
+    const championshipOptions = ['Top 14', 'Pro D2'] as const;
     const [showCreateRosterForm, setShowCreateRosterForm] = useState(false);
-    const [activeCategoryTab, setActiveCategoryTab] = useState<'Top 14' | 'Pro D2' | 'W6N'>('Top 14');
+    const [activeCategoryTab, setActiveCategoryTab] = useState<'Top 14' | 'Pro D2'>('Top 14');
     const [rosterFeedbackMessage, setRosterFeedbackMessage] = useState("");
     const [newPlayerFirst, setNewPlayerFirst] = useState("");
     const [newPlayerLast, setNewPlayerLast] = useState("");
@@ -73,7 +71,7 @@ export default function RosterManager({
     const [editingRosterCoach, setEditingRosterCoach] = useState("");
     const [editingRosterPresident, setEditingRosterPresident] = useState("");
     const [editingRosterFoundedIn, setEditingRosterFoundedIn] = useState("");
-    const [editingRosterTitles, setEditingRosterTitles] = useState<Title[]>([{ competition: "", ranking: "Champion.ne", year: new Date().getFullYear() }]);
+    const [editingRosterTitles, setEditingRosterTitles] = useState("");
     const [rosterFormError, setRosterFormError] = useState("");
 
     const activeRoster = rosters.find((r) => r.id === activeRosterId);
@@ -105,132 +103,24 @@ export default function RosterManager({
         return value.trim();
     }
 
-    function createEmptyTitle(): Title {
-        return { competition: "", ranking: "Champion.ne", year: new Date().getFullYear() };
-    }
-
-    function isW6NCompetition(value: string): boolean {
-        const normalized = value.trim().toLowerCase();
-        return normalized === 'w6n' || normalized === "women's six nations" || normalized === 'womens six nations';
-    }
-
-    function normalizeTitles(titles: Title[]): Title[] {
-        return titles
-            .filter((title) => title.competition.trim() && title.year > 0)
-            .map((title) => ({
-                ...title,
-                grandSlam: isW6NCompetition(title.competition) && title.ranking === 'Champion.ne'
-                    ? title.grandSlam
-                    : undefined,
-            }));
-    }
-
-    function addTitleRow(target: 'new' | 'edit') {
-        if (target === 'new') {
-            setNewRosterTitles((prev) => [...prev, createEmptyTitle()]);
-            return;
-        }
-        setEditingRosterTitles((prev) => [...prev, createEmptyTitle()]);
-    }
-
-    function removeTitleRow(target: 'new' | 'edit', index: number) {
-        if (target === 'new') {
-            setNewRosterTitles((prev) => {
-                const next = prev.filter((_, currentIndex) => currentIndex !== index);
-                return next.length > 0 ? next : [createEmptyTitle()];
+    // Parse un texte libre de palmarès (une ligne = un titre).
+    // Format attendu par ligne : "Compétition Résultat Année" (ex: "Top 14 Vainqueur 2019")
+    function parseTitlesText(text: string): Title[] {
+        return text
+            .split("\n")
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .map((line) => {
+                const parts = line.split(/\s+/);
+                const yearStr = parts[parts.length - 1];
+                const year = parseInt(yearStr, 10);
+                if (parts.length >= 3 && !isNaN(year)) {
+                    const ranking = parts[parts.length - 2];
+                    const competition = parts.slice(0, -2).join(" ");
+                    return { competition, ranking, year };
+                }
+                return { competition: line, ranking: "", year: 0 };
             });
-            return;
-        }
-        setEditingRosterTitles((prev) => {
-            const next = prev.filter((_, currentIndex) => currentIndex !== index);
-            return next.length > 0 ? next : [createEmptyTitle()];
-        });
-    }
-
-    function updateTitleRow(target: 'new' | 'edit', index: number, field: keyof Title, value: string | number | boolean | undefined) {
-        const applyUpdate = (titles: Title[]) => titles.map((title, currentIndex) => {
-            if (currentIndex !== index) return title;
-
-            const updatedTitle = { ...title, [field]: value };
-            if (!isW6NCompetition(updatedTitle.competition) || updatedTitle.ranking !== 'Champion.ne') {
-                updatedTitle.grandSlam = undefined;
-            } else if (updatedTitle.grandSlam !== true) {
-                updatedTitle.grandSlam = false;
-            }
-            return updatedTitle;
-        });
-
-        if (target === 'new') {
-            setNewRosterTitles(applyUpdate);
-            return;
-        }
-        setEditingRosterTitles(applyUpdate);
-    }
-
-    function renderTitlesEditor(target: 'new' | 'edit', titles: Title[]) {
-        return (
-            <div className="space-y-2">
-                {titles.map((title, index) => {
-                    const showGrandSlam = isW6NCompetition(title.competition) && title.ranking === 'Champion.ne';
-
-                    return (
-                        <div key={`${target}-title-${index}`} className="flex items-center gap-2">
-                            <select
-                                className="sp-input-control min-w-0 flex-1 text-sm"
-                                value={title.competition}
-                                onChange={(event) => updateTitleRow(target, index, 'competition', event.target.value)}
-                            >
-                                <option value="">Compétition</option>
-                                {titleCompetitionOptions.map((option) => (
-                                    <option key={option} value={option}>{option}</option>
-                                ))}
-                            </select>
-                            <select
-                                className="sp-input-control w-32 shrink-0 text-sm"
-                                value={title.ranking}
-                                onChange={(event) => updateTitleRow(target, index, 'ranking', event.target.value)}
-                            >
-                                {titleRankingOptions.map((option) => (
-                                    <option key={option} value={option}>{option}</option>
-                                ))}
-                            </select>
-                            <input
-                                type="number"
-                                className="sp-input-control w-24 shrink-0 text-sm"
-                                placeholder="Année"
-                                value={title.year || ''}
-                                onChange={(event) => updateTitleRow(target, index, 'year', parseInt(event.target.value, 10) || 0)}
-                            />
-                            <label className={`flex h-10 items-center gap-2 rounded-md border border-neutral-700 bg-neutral-950/60 px-2 text-xs whitespace-nowrap ${showGrandSlam ? 'text-neutral-200' : 'text-neutral-500'}`}>
-                                <input
-                                    type="checkbox"
-                                    checked={title.grandSlam === true}
-                                    disabled={!showGrandSlam}
-                                    onChange={(event) => updateTitleRow(target, index, 'grandSlam', event.target.checked)}
-                                />
-                                Grand Chelem
-                            </label>
-                            <button
-                                type="button"
-                                className="sp-button sp-button-red sp-button-icon shrink-0"
-                                onClick={() => removeTitleRow(target, index)}
-                                aria-label="Supprimer cette ligne de palmarès"
-                            >
-                                <FontAwesomeIcon icon={faTrashCan} />
-                            </button>
-                        </div>
-                    );
-                })}
-                <button
-                    type="button"
-                    className="sp-button sp-button-xs sp-button-neutral"
-                    onClick={() => addTitleRow(target)}
-                >
-                    <FontAwesomeIcon icon={faPlus} className="mr-1" />
-                    Ajouter une ligne
-                </button>
-            </div>
-        );
     }
 
     async function readImageAsDataUrl(file: File): Promise<string> {
@@ -291,7 +181,7 @@ export default function RosterManager({
 
         const president = newRosterPresident.trim();
         const foundedIn = newRosterFoundedIn.trim() ? parseInt(newRosterFoundedIn.trim(), 10) : undefined;
-        const titles = normalizeTitles(newRosterTitles);
+        const titlesText = newRosterTitles.trim();
         const newRoster = createNewRoster(
             trimmedName,
             newRosterCategory,
@@ -301,7 +191,7 @@ export default function RosterManager({
             coach || undefined,
             president || undefined,
             !isNaN(foundedIn as number) ? foundedIn : undefined,
-            titles.length > 0 ? titles : undefined
+            titlesText || undefined
         );
         setRosters([...rosters, newRoster]);
         setActiveRosterId(newRoster.id);
@@ -319,7 +209,7 @@ export default function RosterManager({
         setNewRosterCoach("");
         setNewRosterPresident("");
         setNewRosterFoundedIn("");
-        setNewRosterTitles([createEmptyTitle()]);
+        setNewRosterTitles("");
         setNewRosterCategory('Top 14');
         setRosterFormError("");
     }
@@ -333,7 +223,7 @@ export default function RosterManager({
         setEditingRosterCoach(roster.coach || "");
         setEditingRosterPresident(roster.president || "");
         setEditingRosterFoundedIn(roster.founded_in ? String(roster.founded_in) : "");
-        setEditingRosterTitles(roster.titles && roster.titles.length > 0 ? roster.titles.map((title) => ({ ...title })) : [createEmptyTitle()]);
+        setEditingRosterTitles(roster.titles?.map((t) => `${t.competition} ${t.ranking} ${t.year}`).join("\n") || "");
         setRosterFormError("");
     }
 
@@ -346,7 +236,7 @@ export default function RosterManager({
         setEditingRosterCoach("");
         setEditingRosterPresident("");
         setEditingRosterFoundedIn("");
-        setEditingRosterTitles([createEmptyTitle()]);
+        setEditingRosterTitles("");
         setRosterFormError("");
     }
 
@@ -359,7 +249,7 @@ export default function RosterManager({
         const coach = normalizeCoach(editingRosterCoach);
         const president = editingRosterPresident.trim();
         const foundedIn = editingRosterFoundedIn.trim() ? parseInt(editingRosterFoundedIn.trim(), 10) : undefined;
-        const titles = normalizeTitles(editingRosterTitles);
+        const titlesText = editingRosterTitles.trim();
         const nicknameError = validateNickname(nickname);
         const colorError = validateColor(color);
         if (!trimmedName) return;
@@ -380,11 +270,9 @@ export default function RosterManager({
                     nickname: nickname || undefined,
                     color: color || undefined,
                     logo: logo || undefined,
-                    coach: coach || undefined,
-                    president: president || undefined,
+                    coach: coach || undefined,                    president: president || undefined,
                     founded_in: !isNaN(foundedIn as number) ? foundedIn : undefined,
-                    titles: titles.length > 0 ? titles : undefined,
-                }
+                    titles: titlesText ? parseTitlesText(titlesText) : undefined,                }
                 : roster
         ));
         setTeams((prev) => prev.map((team) =>
@@ -550,16 +438,6 @@ export default function RosterManager({
                 >
                     Pro D2
                 </button>
-                <button
-                    className={`px-3 py-2 rounded border text-sm font-medium transition-colors ${
-                        activeCategoryTab === 'W6N'
-                            ? 'border-blue-500 bg-blue-500/20 text-blue-300'
-                            : 'border-neutral-700 bg-neutral-900 text-neutral-300 hover:bg-neutral-800'
-                    }`}
-                    onClick={() => setActiveCategoryTab('W6N')}
-                >
-                    Women's 6 Nations
-                </button>
             </div>
             <button
                 className="sp-button sp-button-sm sp-button-indigo"
@@ -587,7 +465,7 @@ export default function RosterManager({
                                 id="newRosterCategory"
                                 className="sp-input-control"
                                 value={newRosterCategory}
-                                onChange={(e) => setNewRosterCategory(e.target.value as 'Top 14' | 'Pro D2' | 'W6N')}
+                                onChange={(e) => setNewRosterCategory(e.target.value as 'Top 14' | 'Pro D2')}
                             >
                                 {championshipOptions.map((option) => (
                                     <option key={option} value={option}>
@@ -685,8 +563,14 @@ export default function RosterManager({
                             />
                         </div>
                         <div className="sp-input-shell">
-                            <label className="sp-input-label">Palmarès (optionnel)</label>
-                            {renderTitlesEditor('new', newRosterTitles)}
+                            <label className="sp-input-label" htmlFor="newRosterTitles">Palmarès (optionnel, un titre par ligne)</label>
+                            <textarea
+                                id="newRosterTitles"
+                                className="sp-input-control resize-y min-h-[4rem]"
+                                placeholder="Top 14 Vainqueur 2019"
+                                value={newRosterTitles}
+                                onChange={(e) => setNewRosterTitles(e.target.value)}
+                            />
                         </div>
                         
                         <div className="flex items-center justify-center gap-2">
@@ -807,8 +691,14 @@ export default function RosterManager({
                         </div>
                         
                         <div className="sp-input-shell">
-                            <label className="sp-input-label">Palmarès (optionnel)</label>
-                            {renderTitlesEditor('edit', editingRosterTitles)}
+                            <label className="sp-input-label" htmlFor="editingRosterTitles">Palmarès (optionnel, un titre par ligne)</label>
+                            <textarea
+                                id="editingRosterTitles"
+                                className="sp-input-control resize-y min-h-[4rem]"
+                                placeholder="Top 14 Vainqueur 2019"
+                                value={editingRosterTitles}
+                                onChange={(e) => setEditingRosterTitles(e.target.value)}
+                            />
                         </div>
                         
                         <div className="flex items-center justify-center gap-2">

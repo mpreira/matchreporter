@@ -38,8 +38,4 @@ export default [
     route("api/search", "routes/api/search.ts"),
     route("api/calendar-sync", "routes/api/calendar-sync.ts"),
     route("api/admin/db-stats", "routes/api/admin-db-stats.ts"),
-
-    // TheSportsDB – Top 14 & Pro D2
-    route("api/sportsdb", "routes/api/sportsdb.ts"),
-    route("api/sportsdb-import", "routes/api/sportsdb-import.ts"),
 ] satisfies RouteConfig;

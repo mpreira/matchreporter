@@ -75,24 +75,16 @@ export default function Tracker() {
         () => new Map(rosters.map((roster) => [roster.id, roster.nickname || ""])),
         [rosters]
     );
-
-    const rosterCategoryById = useMemo(
-        () => new Map(rosters.map((roster) => [roster.id, roster.category])),
-        [rosters]
-    );
     
-    // On ne garde que les équipes de la compétition active, puis celles de la journée active si renseignée.
-    // On y injecte aussi le surnom de l'effectif associé.
+    // Si une journée est sélectionnée, on ne garde que les équipes correspondant à cette journée
+    // (leur nom contient "J{matchDay}"). On y injecte aussi le surnom de l'effectif associé.
     const teamsForDay = useMemo(
         () => matchDay
             ? teams
-                .filter((t) => rosterCategoryById.get(t.rosterId) === championship)
                 .filter((t) => t.name.includes(`J${matchDay}`))
                 .map((team) => ({ ...team, nickname: team.nickname || rosterNicknameById.get(team.rosterId) || undefined }))
-            : teams
-                .filter((t) => rosterCategoryById.get(t.rosterId) === championship)
-                .map((team) => ({ ...team, nickname: team.nickname || rosterNicknameById.get(team.rosterId) || undefined })),
-        [teams, matchDay, championship, rosterNicknameById, rosterCategoryById]
+            : teams.map((team) => ({ ...team, nickname: team.nickname || rosterNicknameById.get(team.rosterId) || undefined })),
+        [teams, matchDay, rosterNicknameById]
     );
     
     const [team1Id, setTeam1Id] = useState<string>("");

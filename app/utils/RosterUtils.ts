@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import type { Team, Player, CompositionEntry, Roster, PlayerPosition, Title } from "~/types/tracker";
+import type { Team, Player, CompositionEntry, Roster, PlayerPosition } from "~/types/tracker";
 
 function sortEntriesByNumber(entries: CompositionEntry[]): CompositionEntry[] {
     return [...entries].sort((firstEntry, secondEntry) => firstEntry.number - secondEntry.number);
@@ -8,14 +8,14 @@ function sortEntriesByNumber(entries: CompositionEntry[]): CompositionEntry[] {
 // Roster Operations
 export function createNewRoster(
     name: string,
-    category: 'Top 14' | 'Pro D2' | 'W6N',
+    category: 'Top 14' | 'Pro D2',
     nickname?: string,
     color?: string,
     logo?: string,
     coach?: string,
     president?: string,
     founded_in?: number,
-    titles?: Title[]
+    titlesText?: string
 ): Roster {
     return {
         id: uuidv4(),
@@ -28,7 +28,17 @@ export function createNewRoster(
         players: [],
         category,
         founded_in,
-        titles: titles && titles.length > 0 ? titles : undefined,
+        titles: titlesText
+            ? titlesText.split("\n").filter((l) => l.trim()).map((line) => {
+                const parts = line.trim().split(/\s+/);
+                const yearStr = parts[parts.length - 1];
+                const year = parseInt(yearStr, 10);
+                if (parts.length >= 3 && !isNaN(year)) {
+                    return { competition: parts.slice(0, -2).join(" "), ranking: parts[parts.length - 2], year };
+                }
+                return { competition: line.trim(), ranking: "", year: 0 };
+            })
+            : undefined,
     };
 }
 
@@ -58,7 +68,7 @@ export function deletePlayerFromRoster(roster: Roster, playerId: string): Roster
 export function updatePlayerInRoster(
     roster: Roster,
     playerId: string,
-    updates: { name: string; positions?: PlayerPosition[]; photoUrl?: string; nationality?: string; club?: string }
+    updates: { name: string; positions?: PlayerPosition[]; photoUrl?: string; nationality?: string }
 ): Roster {
     return {
         ...roster,
@@ -73,8 +83,7 @@ export function createPlayerFromNames(
     last: string,
     positions?: PlayerPosition[],
     photoUrl?: string,
-    nationality?: string,
-    club?: string
+    nationality?: string
 ): Player {
     const name = `${first} ${last}`.trim();
     return {
@@ -83,7 +92,6 @@ export function createPlayerFromNames(
         positions: positions && positions.length > 0 ? positions : undefined,
         photoUrl: photoUrl?.trim() ? photoUrl.trim() : undefined,
         nationality: nationality?.trim() ? nationality.trim() : undefined,
-        club: club?.trim() ? club.trim() : undefined,
     };
 }
 

@@ -7,7 +7,7 @@ import type { Roster, Team } from "~/types/tracker";
 import { rosterStatePayloadSchema } from "~/utils/schemas.server";
 
 type Sport = "Rugby" | "Football";
-type Championship = "Top 14" | "Pro D2" | "W6N";
+type Championship = "Top 14" | "Pro D2";
 
 export interface RosterStatePayload {
   rosters: Roster[];
@@ -123,19 +123,6 @@ function parseJsonOrNull<T>(raw: string): T | null {
   } catch {
     return null;
   }
-}
-
-function normalizeTitleRanking(ranking: string | null | undefined): string | null {
-  if (ranking == null) return null;
-  const trimmed = ranking.trim();
-  if (!trimmed) return null;
-
-  const normalized = trimmed.toLowerCase();
-  if (normalized === "vainqueur") return "Champion.ne";
-  if (normalized === "finaliste") return "Vice-Champion.ne";
-  if (normalized === "vice-champion.ne") return "Vice-Champion.ne";
-
-  return trimmed;
 }
 
 function getDatabaseUrl(): string {
@@ -594,21 +581,9 @@ async function initializeSchema(pool: Pool) {
       competition TEXT,
       ranking VARCHAR,
       year INTEGER,
-      grand_slam BOOLEAN,
       last_modified_by TEXT,
       UNIQUE (account_id, roster_id, competition, year)
     );
-
-    ALTER TABLE titles ADD COLUMN IF NOT EXISTS grand_slam BOOLEAN;
-
-    UPDATE titles
-    SET ranking = CASE
-      WHEN LOWER(TRIM(ranking)) = 'vainqueur' THEN 'Champion.ne'
-      WHEN LOWER(TRIM(ranking)) = 'finaliste' THEN 'Vice-Champion.ne'
-      WHEN LOWER(TRIM(ranking)) = 'vice-champion.ne' THEN 'Vice-Champion.ne'
-      ELSE ranking
-    END
-    WHERE ranking IS NOT NULL;
 
     CREATE TABLE IF NOT EXISTS matches (
       id TEXT PRIMARY KEY,
@@ -984,17 +959,15 @@ async function syncRosterDataToTables(
       // 8. Insert titles from this roster
       for (const t of rTitles) {
         if (!t.competition || typeof t.year !== "number") continue;
-        const normalizedRanking = normalizeTitleRanking(t.ranking ?? null);
 
         await client.query(
           `INSERT INTO titles
-           (account_id, roster_id, competition, ranking, year, grand_slam, last_modified_by)
-           VALUES ($1,$2,$3,$4,$5,$6,$7)
+           (account_id, roster_id, competition, ranking, year, last_modified_by)
+           VALUES ($1,$2,$3,$4,$5,$6)
            ON CONFLICT (account_id, roster_id, competition, year) DO UPDATE SET
              ranking = EXCLUDED.ranking,
-             grand_slam = EXCLUDED.grand_slam,
              last_modified_by = EXCLUDED.last_modified_by`,
-          [accountId, r.id, t.competition, normalizedRanking, t.year, t.grandSlam ?? null, accountId]
+          [accountId, r.id, t.competition, t.ranking ?? null, t.year, accountId]
         );
       }
     }
@@ -2672,7 +2645,6 @@ export interface DbTitle {
   competition: string | null;
   ranking: string | null;
   year: number | null;
-  grandSlam: boolean | null;
 }
 
 function mapTitleRow(row: Record<string, unknown>): DbTitle {
@@ -2683,7 +2655,6 @@ function mapTitleRow(row: Record<string, unknown>): DbTitle {
     competition: (row.competition as string) ?? null,
     ranking: (row.ranking as string) ?? null,
     year: (row.year as number) ?? null,
-    grandSlam: (row.grand_slam as boolean | null) ?? null,
   };
 }
 
@@ -2706,36 +2677,33 @@ export async function getTitleById(id: number): Promise<DbTitle | null> {
 }
 
 export async function createTitle(accountId: string, input: {
-  rosterId: string; competition: string; ranking?: string | null; year: number; grandSlam?: boolean | null;
+  rosterId: string; competition: string; ranking?: string | null; year: number;
 }): Promise<DbTitle> {
   await ensureInitialized();
   const pool = getPool();
-  const normalizedRanking = normalizeTitleRanking(input.ranking ?? null);
   const result = await pool.query(
-    `INSERT INTO titles (account_id, roster_id, competition, ranking, year, grand_slam, last_modified_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7)
+    `INSERT INTO titles (account_id, roster_id, competition, ranking, year, last_modified_by)
+     VALUES ($1,$2,$3,$4,$5,$6)
      RETURNING *`,
-    [accountId, input.rosterId, input.competition, normalizedRanking, input.year, input.grandSlam ?? null, accountId]
+    [accountId, input.rosterId, input.competition, input.ranking ?? null, input.year, accountId]
   );
   return mapTitleRow(result.rows[0]);
 }
 
 export async function updateTitle(id: number, input: {
-  competition?: string; ranking?: string | null; year?: number; grandSlam?: boolean | null;
+  competition?: string; ranking?: string | null; year?: number;
 }, modifiedBy?: string): Promise<DbTitle | null> {
   await ensureInitialized();
   const pool = getPool();
-  const normalizedRanking = normalizeTitleRanking(input.ranking ?? null);
   const result = await pool.query(
     `UPDATE titles SET
        competition = COALESCE($2, competition),
        ranking = COALESCE($3, ranking),
        year = COALESCE($4, year),
-       grand_slam = COALESCE($5, grand_slam),
-       last_modified_by = COALESCE($6, last_modified_by)
+       last_modified_by = COALESCE($5, last_modified_by)
      WHERE id = $1
      RETURNING *`,
-    [id, input.competition ?? null, normalizedRanking, input.year ?? null, input.grandSlam ?? null, modifiedBy ?? null]
+    [id, input.competition ?? null, input.ranking ?? null, input.year ?? null, modifiedBy ?? null]
   );
   const row = result.rows[0];
   return row ? mapTitleRow(row) : null;
