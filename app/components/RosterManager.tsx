@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
-import type { Team, Player, Roster, Title } from "~/types/tracker";
+import type { Team, Player, Roster, Title, Championship, CompetitionGender } from "~/types/tracker";
+import { MASCULINE_CHAMPIONSHIPS, FEMININE_CHAMPIONSHIPS, MIXED_CHAMPIONSHIPS, getCompetitionGender } from "~/types/tracker";
 import { toShortId } from "~/utils/shortId";
 import { useTeams } from "~/context/TeamsContext";
 import {
@@ -50,10 +51,11 @@ export default function RosterManager({
     const [newRosterPresident, setNewRosterPresident] = useState("");
     const [newRosterFoundedIn, setNewRosterFoundedIn] = useState("");
     const [newRosterTitles, setNewRosterTitles] = useState("");
-    const [newRosterCategory, setNewRosterCategory] = useState<'Top 14' | 'Pro D2' | 'Elite 1' | 'Women\'s Six Nations' | 'World Series'>('Top 14');
-    const championshipOptions = ['Top 14', 'Pro D2', 'Elite 1', 'Women\'s Six Nations', 'World Series'] as const;
+    const [newRosterCategory, setNewRosterCategory] = useState<Championship>('Top 14');
+    const championshipOptions: readonly Championship[] = ['Top 14', 'Pro D2', 'Elite 1', "Women's Six Nations", 'World Series'];
     const [showCreateRosterForm, setShowCreateRosterForm] = useState(false);
-    const [activeCategoryTab, setActiveCategoryTab] = useState<'Top 14' | 'Pro D2' | 'Elite 1' | 'Women\'s Six Nations' | 'World Series'>('Top 14');
+    const [activeGenderTab, setActiveGenderTab] = useState<CompetitionGender>('masculine');
+    const [activeCategoryTab, setActiveCategoryTab] = useState<Championship>('Top 14');
     const [rosterFeedbackMessage, setRosterFeedbackMessage] = useState("");
     const [newPlayerFirst, setNewPlayerFirst] = useState("");
     const [newPlayerLast, setNewPlayerLast] = useState("");
@@ -406,8 +408,18 @@ export default function RosterManager({
     const { matchDay, championship } = useTeams();
 
     useEffect(() => {
+        const gender = getCompetitionGender(championship);
+        setActiveGenderTab(gender);
         setActiveCategoryTab(championship);
     }, [championship]);
+
+    function handleGenderTabClick(gender: CompetitionGender) {
+        setActiveGenderTab(gender);
+        const list = gender === 'masculine' ? MASCULINE_CHAMPIONSHIPS
+            : gender === 'feminine' ? FEMININE_CHAMPIONSHIPS
+            : MIXED_CHAMPIONSHIPS;
+        setActiveCategoryTab(list[0]);
+    }
 
     const filteredRosters = rosters
         .filter((r) => r.category === activeCategoryTab)
@@ -417,57 +429,40 @@ export default function RosterManager({
 
     return (
         <section className="space-y-4 max-w-screen-md mx-auto px-4">
+            {/* Onglets genre */}
+            <div className="flex items-center gap-2 border-b border-neutral-800 pb-2">
+                {(['masculine', 'feminine', 'mixed'] as CompetitionGender[]).map((gender) => (
+                    <button
+                        key={gender}
+                        className={`px-3 py-1.5 rounded text-sm font-semibold transition-colors ${
+                            activeGenderTab === gender
+                                ? 'bg-violet-600 text-white'
+                                : 'text-neutral-400 hover:text-neutral-200'
+                        }`}
+                        onClick={() => handleGenderTabClick(gender)}
+                    >
+                        {gender === 'masculine' ? 'Masculin' : gender === 'feminine' ? 'Féminin' : 'Mixte'}
+                    </button>
+                ))}
+            </div>
+            {/* Onglets championnat (filtrés par genre) */}
             <div className="flex items-center gap-2">
-                <button
-                    className={`px-3 py-2 rounded border text-sm font-medium transition-colors ${
-                        activeCategoryTab === 'Top 14'
-                            ? 'border-blue-500 bg-blue-500/20 text-blue-300'
-                            : 'border-neutral-700 bg-neutral-900 text-neutral-300 hover:bg-neutral-800'
-                    }`}
-                    onClick={() => setActiveCategoryTab('Top 14')}
-                >
-                    Top 14
-                </button>
-                <button
-                    className={`px-3 py-2 rounded border text-sm font-medium transition-colors ${
-                        activeCategoryTab === 'Pro D2'
-                            ? 'border-blue-500 bg-blue-500/20 text-blue-300'
-                            : 'border-neutral-700 bg-neutral-900 text-neutral-300 hover:bg-neutral-800'
-                    }`}
-                    onClick={() => setActiveCategoryTab('Pro D2')}
-                >
-                    Pro D2
-                </button>
-                <button
-                    className={`px-3 py-2 rounded border text-sm font-medium transition-colors ${
-                        activeCategoryTab === 'Elite 1'
-                            ? 'border-blue-500 bg-blue-500/20 text-blue-300'
-                            : 'border-neutral-700 bg-neutral-900 text-neutral-300 hover:bg-neutral-800'
-                    }`}
-                    onClick={() => setActiveCategoryTab('Elite 1')}
-                >
-                    Elite 1
-                </button>
-                <button
-                    className={`px-3 py-2 rounded border text-sm font-medium transition-colors ${
-                        activeCategoryTab === 'Women\'s Six Nations'
-                            ? 'border-blue-500 bg-blue-500/20 text-blue-300'
-                            : 'border-neutral-700 bg-neutral-900 text-neutral-300 hover:bg-neutral-800'
-                    }`}
-                    onClick={() => setActiveCategoryTab('Women\'s Six Nations')}
-                >
-                    W6N
-                </button>
-                <button
-                    className={`px-3 py-2 rounded border text-sm font-medium transition-colors ${
-                        activeCategoryTab === 'World Series'
-                            ? 'border-blue-500 bg-blue-500/20 text-blue-300'
-                            : 'border-neutral-700 bg-neutral-900 text-neutral-300 hover:bg-neutral-800'
-                    }`}
-                    onClick={() => setActiveCategoryTab('World Series')}
-                >
-                    World Series
-                </button>
+                {(activeGenderTab === 'masculine' ? MASCULINE_CHAMPIONSHIPS
+                    : activeGenderTab === 'feminine' ? FEMININE_CHAMPIONSHIPS
+                    : MIXED_CHAMPIONSHIPS
+                ).map((champ) => (
+                    <button
+                        key={champ}
+                        className={`px-3 py-2 rounded border text-sm font-medium transition-colors ${
+                            activeCategoryTab === champ
+                                ? 'border-blue-500 bg-blue-500/20 text-blue-300'
+                                : 'border-neutral-700 bg-neutral-900 text-neutral-300 hover:bg-neutral-800'
+                        }`}
+                        onClick={() => setActiveCategoryTab(champ)}
+                    >
+                        {champ === "Women's Six Nations" ? 'W6N' : champ}
+                    </button>
+                ))}
             </div>
             <button
                 className="sp-button sp-button-sm sp-button-indigo"

@@ -1,14 +1,25 @@
 export type Championship = 'Top 14' | 'Pro D2' | 'Elite 1' | "Women's Six Nations" | 'World Series';
 
 export type CompetitionScope = 'national' | 'international';
+export type CompetitionGender = 'masculine' | 'feminine' | 'mixed';
 
 export const NATIONAL_CHAMPIONSHIPS: readonly Championship[] = ['Top 14', 'Pro D2', 'Elite 1'] as const;
 export const INTERNATIONAL_CHAMPIONSHIPS: readonly Championship[] = ["Women's Six Nations", 'World Series'] as const;
+
+export const MASCULINE_CHAMPIONSHIPS: readonly Championship[] = ['Top 14', 'Pro D2'] as const;
+export const FEMININE_CHAMPIONSHIPS: readonly Championship[] = ['Elite 1', "Women's Six Nations"] as const;
+export const MIXED_CHAMPIONSHIPS: readonly Championship[] = ['World Series'] as const;
 
 export function getCompetitionScope(championship: string | undefined): CompetitionScope {
     return INTERNATIONAL_CHAMPIONSHIPS.includes(championship as Championship)
         ? 'international'
         : 'national';
+}
+
+export function getCompetitionGender(championship: string | undefined): CompetitionGender {
+    if (FEMININE_CHAMPIONSHIPS.includes(championship as Championship)) return 'feminine';
+    if (MIXED_CHAMPIONSHIPS.includes(championship as Championship)) return 'mixed';
+    return 'masculine';
 }
 
 export const PLAYER_POSITIONS = [
