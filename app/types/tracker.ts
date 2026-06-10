@@ -70,6 +70,7 @@ export interface Coach {
     photoUrl?: string;
     nationality?: string; // ISO 3166-1 alpha-2 code
     club?: Team["name"];
+    federation?: string; // e.g. "FFR"
 }
 
 export interface President {
@@ -77,10 +78,11 @@ export interface President {
     photoUrl?: string;
     nationality?: string; // ISO 3166-1 alpha-2 code
     club?: Team["name"];
+    federation?: string; // e.g. "FFR"
 }
 
 export interface Title {
-    competition: 'Top 14' | 'Pro D2 | Coupe d\'Europe' | 'Challenge Cup' | string;
+    competition: 'Top 14' | 'Pro D2 | Coupe d\'Europe' | 'Challenge Cup' | 'Elite 1' | 'Six Nations' | "Women's Six Nations" | 'World Series' | 'World Championship' | string;
     ranking: 'Vainqueur' | 'Finaliste' | string;
     year: number;
 }
@@ -110,6 +112,8 @@ export interface SeasonData {
     players: Player[];
     coach?: string;
     calendar?: MatchFixture[];
+    ranking?: number;  // classement final de la saison
+    points?: number;   // points en fin de saison
 }
 
 export const CURRENT_SEASON = "2025/2026";

@@ -6,6 +6,7 @@ import type { LiveSnapshot } from "~/types/live";
 import type { Roster, Team } from "~/types/tracker";
 import { getCompetitionScope } from "~/types/tracker";
 import { rosterStatePayloadSchema } from "~/utils/schemas.server";
+import { ALL_CLUBS } from "~/utils/clubs";
 
 type Sport = "Rugby" | "Football";
 type Championship = "Top 14" | "Pro D2" | "Elite 1" | "Women's Six Nations" | "World Series";
@@ -523,6 +524,7 @@ async function initializeSchema(pool: Pool) {
     ALTER TABLE stored_rosters ADD COLUMN IF NOT EXISTS current_points INTEGER;
     ALTER TABLE stored_rosters ADD COLUMN IF NOT EXISTS last_five_matches JSONB;
     ALTER TABLE stored_rosters ADD COLUMN IF NOT EXISTS season_record JSONB;
+    ALTER TABLE stored_rosters ADD COLUMN IF NOT EXISTS seasons JSONB;
 
     CREATE TABLE IF NOT EXISTS stored_teams (
       id TEXT NOT NULL,
@@ -872,8 +874,8 @@ async function syncRosterDataToTables(
         `INSERT INTO stored_rosters
          (id, account_id, name, nickname, color, logo, coach, president, category,
           founded_in, players, titles, created_at, updated_at, last_modified_by,
-          coach_id, president_id, current_ranking, current_points, last_five_matches, season_record)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13,$14,$15,$16,$17,$18,$19,$20)`,
+          coach_id, president_id, current_ranking, current_points, last_five_matches, season_record, seasons)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
         [
           r.id,
           accountId,
@@ -895,6 +897,7 @@ async function syncRosterDataToTables(
           r.currentPoints ?? null,
           r.lastFiveMatches ? JSON.stringify(r.lastFiveMatches) : null,
           r.seasonRecord ? JSON.stringify(r.seasonRecord) : null,
+          r.seasons ? JSON.stringify(r.seasons) : null,
         ]
       );
 
@@ -1271,6 +1274,68 @@ async function backfillStructuredTables(pool: Pool): Promise<void> {
   console.log("[backfill] Done.");
 }
 
+// ---------------------------------------------------------------------------
+// Seed: default club rosters (Top 14 + Pro D2) for the legacy account
+// ---------------------------------------------------------------------------
+
+async function seedDefaultRosters(pool: Pool): Promise<void> {
+  const existing = await pool.query<{ name: string; category: string }>(
+    `SELECT name, category FROM stored_rosters WHERE account_id = $1`,
+    [LEGACY_ACCOUNT_ID]
+  );
+  const existingKeys = new Set(
+    existing.rows.map((r) => `${r.name}||${r.category}`)
+  );
+
+  const missing = ALL_CLUBS.filter(
+    (c) => !existingKeys.has(`${c.name}||${c.category}`)
+  );
+  if (missing.length === 0) return;
+
+  console.log(`[seed] Adding ${missing.length} default club roster(s)…`);
+
+  const currentPayload = await pool.query<{ payload: string }>(
+    `SELECT payload FROM account_rosters_state WHERE account_id = $1`,
+    [LEGACY_ACCOUNT_ID]
+  );
+  const parsed = currentPayload.rows[0]
+    ? parseJsonOrNull<RosterStatePayload>(currentPayload.rows[0].payload)
+    : null;
+
+  const existingRosters: Roster[] = parsed?.rosters ?? [];
+  const existingTeams: Team[] = parsed?.teams ?? [];
+
+  const newRosters: Roster[] = missing.map((c) => ({
+    id: crypto.randomUUID(),
+    name: c.name,
+    nickname: c.nickname,
+    color: c.color,
+    category: c.category,
+    players: [],
+    currentRanking: c.currentRanking,
+    currentPoints: c.currentPoints,
+  }));
+
+  const payload: RosterStatePayload = {
+    rosters: [...existingRosters, ...newRosters],
+    teams: existingTeams,
+    activeRosterId: parsed?.activeRosterId ?? null,
+    matchDay: parsed?.matchDay,
+    season: parsed?.season,
+    sport: parsed?.sport,
+    championship: parsed?.championship,
+  };
+
+  const now = new Date().toISOString();
+  await pool.query(
+    `INSERT INTO account_rosters_state (account_id, payload, updated_at)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (account_id) DO UPDATE SET payload = EXCLUDED.payload, updated_at = EXCLUDED.updated_at`,
+    [LEGACY_ACCOUNT_ID, JSON.stringify(payload), now]
+  );
+  await syncRosterDataToTables(pool, LEGACY_ACCOUNT_ID, payload);
+}
+
 async function ensureInitialized() {
   if (initializationPromise) {
     await initializationPromise;
@@ -1282,6 +1347,7 @@ async function ensureInitialized() {
     await initializeSchema(pool);
     await migrateFromJsonFiles(pool);
     await backfillStructuredTables(pool);
+    await seedDefaultRosters(pool);
   })();
 
   await initializationPromise;
