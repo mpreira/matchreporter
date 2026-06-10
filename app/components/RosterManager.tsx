@@ -53,7 +53,7 @@ export default function RosterManager({
     const [newRosterCategory, setNewRosterCategory] = useState<'Top 14' | 'Pro D2' | 'Women\'s Six Nations' | 'World Series'>('Top 14');
     const championshipOptions = ['Top 14', 'Pro D2', 'Women\'s Six Nations', 'World Series'] as const;
     const [showCreateRosterForm, setShowCreateRosterForm] = useState(false);
-    const [activeCategoryTab, setActiveCategoryTab] = useState<'Top 14' | 'Pro D2' | 'Women\'s Six Nations' | 'World Series'>('Top 14');
+    const [activeCategoryTab, setActiveCategoryTab] = useState<'Top 14' | 'Pro D2' | 'Elite 1' | 'Women\'s Six Nations' | 'World Series'>('Top 14');
     const [rosterFeedbackMessage, setRosterFeedbackMessage] = useState("");
     const [newPlayerFirst, setNewPlayerFirst] = useState("");
     const [newPlayerLast, setNewPlayerLast] = useState("");
@@ -437,6 +437,16 @@ export default function RosterManager({
                     onClick={() => setActiveCategoryTab('Pro D2')}
                 >
                     Pro D2
+                </button>
+                <button
+                    className={`px-3 py-2 rounded border text-sm font-medium transition-colors ${
+                        activeCategoryTab === 'Elite 1'
+                            ? 'border-blue-500 bg-blue-500/20 text-blue-300'
+                            : 'border-neutral-700 bg-neutral-900 text-neutral-300 hover:bg-neutral-800'
+                    }`}
+                    onClick={() => setActiveCategoryTab('Elite 1')}
+                >
+                    Elite 1
                 </button>
                 <button
                     className={`px-3 py-2 rounded border text-sm font-medium transition-colors ${
