@@ -7,9 +7,9 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowLeft, faPenToSquare } from "@fortawesome/free-solid-svg-icons";
 import { getFlagUrl, getCountryByCode } from "~/utils/countries";
 import type { PlayerStats } from "~/types/tracker";
-import { getCompetitionGender } from "~/types/tracker";
+import { getCompetitionGender, getCompetitionScope, NATIONAL_CHAMPIONSHIPS } from "~/types/tracker";
 import { TOP14_CLUBS_2025_2026, PROD2_CLUBS_2025_2026, ELITE1_CLUBS_2025_2026 } from "~/utils/clubs";
-import { updatePlayerInRoster } from "~/utils/RosterUtils";
+import { updatePlayerInRoster, addPlayerToRosterList } from "~/utils/RosterUtils";
 
 function sanitizeStat(value: unknown): number {
   const n = Number(value);
@@ -66,6 +66,8 @@ export default function PlayerProfilePage() {
   const [isEditingInfo, setIsEditingInfo] = useState(false);
   const [infoClubDraft, setInfoClubDraft] = useState("");
   const [infoMessage, setInfoMessage] = useState("");
+  const [selectedNationalRosterId, setSelectedNationalRosterId] = useState("");
+  const [nationalRosterMessage, setNationalRosterMessage] = useState("");
   const [statsDraft, setStatsDraft] = useState<PlayerStats>({
     points: 0,
     essais: 0,
@@ -147,6 +149,32 @@ export default function PlayerProfilePage() {
   const clubOptions = rosterGender === 'feminine'
     ? ELITE1_CLUBS_2025_2026
     : [...TOP14_CLUBS_2025_2026, ...PROD2_CLUBS_2025_2026];
+
+  // National rosters compatible with this player's gender that don't already contain them
+  const availableNationalRosters = useMemo(() => {
+    if (!player) return [];
+    const nationalCategories = rosterGender === 'feminine'
+      ? ["Elite 1"]
+      : rosterGender === 'masculine'
+      ? ["Top 14", "Pro D2"]
+      : NATIONAL_CHAMPIONSHIPS as readonly string[];
+    return rosters.filter((r) =>
+      r.id !== rosterId &&
+      r.category && nationalCategories.includes(r.category) &&
+      getCompetitionScope(r.category) === 'national' &&
+      !r.players.some((p) => p.id === player.id)
+    ).sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
+  }, [rosters, player, rosterId, rosterGender]);
+
+  function addToNationalRoster() {
+    if (!player || !selectedNationalRosterId) return;
+    const targetRoster = rosters.find((r) => r.id === selectedNationalRosterId);
+    if (!targetRoster) return;
+    const updatedRoster = addPlayerToRosterList(targetRoster, { ...player });
+    setRosters(rosters.map((r) => r.id === updatedRoster.id ? updatedRoster : r));
+    setSelectedNationalRosterId("");
+    setNationalRosterMessage(`${player.name} ajouté·e à ${targetRoster.name}.`);
+  }
 
   function saveInfo() {
     if (!roster || !player) return;
@@ -243,7 +271,7 @@ export default function PlayerProfilePage() {
             );
           })()}
           <div className="space-y-1">
-            <p className="text-sm font-semibold text-neutral-300">Club</p>
+            <p className="text-sm font-semibold text-neutral-300">Club:</p>
             {isEditingInfo ? (
               <select
                 className="sp-input-control"
@@ -273,6 +301,44 @@ export default function PlayerProfilePage() {
           </aside>
         )}
       </div>
+
+      {availableNationalRosters.length > 0 && (
+        <section className="sp-panel space-y-3">
+          <h2 className="font-semibold">Ajouter à un effectif national</h2>
+          {nationalRosterMessage && (
+            <p className="text-xs text-emerald-400">{nationalRosterMessage}</p>
+          )}
+          <div className="flex items-end gap-2 flex-wrap">
+            <div className="sp-input-shell flex-1 min-w-[12rem]">
+              <label className="sp-input-label" htmlFor="nationalRosterSelect">Effectif</label>
+              <select
+                id="nationalRosterSelect"
+                className="sp-input-control"
+                value={selectedNationalRosterId}
+                onChange={(e) => {
+                  setSelectedNationalRosterId(e.target.value);
+                  setNationalRosterMessage("");
+                }}
+              >
+                <option value="">— Choisir un effectif —</option>
+                {availableNationalRosters.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}{r.category ? ` (${r.category})` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              type="button"
+              className="sp-button sp-button-sm sp-button-blue"
+              disabled={!selectedNationalRosterId}
+              onClick={addToNationalRoster}
+            >
+              Ajouter
+            </button>
+          </div>
+        </section>
+      )}
 
       <section className="sp-panel space-y-3">
         <div className="flex items-center justify-between gap-2">
