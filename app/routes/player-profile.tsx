@@ -4,9 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useTeams } from "~/context/TeamsContext";
 import { toShortId, findFullId } from "~/utils/shortId";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faArrowLeft } from "@fortawesome/free-solid-svg-icons";
+import { faArrowLeft, faPenToSquare } from "@fortawesome/free-solid-svg-icons";
 import { getFlagUrl, getCountryByCode } from "~/utils/countries";
 import type { PlayerStats } from "~/types/tracker";
+import { getCompetitionGender } from "~/types/tracker";
+import { TOP14_CLUBS_2025_2026, PROD2_CLUBS_2025_2026, ELITE1_CLUBS_2025_2026 } from "~/utils/clubs";
+import { updatePlayerInRoster } from "~/utils/RosterUtils";
 
 function sanitizeStat(value: unknown): number {
   const n = Number(value);
@@ -60,6 +63,9 @@ export default function PlayerProfilePage() {
   );
   const [isEditingStats, setIsEditingStats] = useState(false);
   const [statsMessage, setStatsMessage] = useState("");
+  const [isEditingInfo, setIsEditingInfo] = useState(false);
+  const [infoClubDraft, setInfoClubDraft] = useState("");
+  const [infoMessage, setInfoMessage] = useState("");
   const [statsDraft, setStatsDraft] = useState<PlayerStats>({
     points: 0,
     essais: 0,
@@ -137,6 +143,25 @@ export default function PlayerProfilePage() {
     setIsEditingStats(false);
   }
 
+  const rosterGender = roster ? getCompetitionGender(roster.category) : 'masculine';
+  const clubOptions = rosterGender === 'feminine'
+    ? ELITE1_CLUBS_2025_2026
+    : [...TOP14_CLUBS_2025_2026, ...PROD2_CLUBS_2025_2026];
+
+  function saveInfo() {
+    if (!roster || !player) return;
+    const updatedRoster = updatePlayerInRoster(roster, player.id, {
+      name: player.name,
+      positions: player.positions,
+      photoUrl: player.photoUrl,
+      nationality: player.nationality,
+      club: infoClubDraft || undefined,
+    });
+    setRosters(rosters.map((r) => r.id === roster.id ? updatedRoster : r));
+    setIsEditingInfo(false);
+    setInfoMessage("Club mis à jour.");
+  }
+
   const backPath = getRosterBackPath(rosterId ? toShortId(rosterId) : undefined);
 
   if (!roster || !player) {
@@ -164,7 +189,37 @@ export default function PlayerProfilePage() {
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:items-start">
         <section className="sp-panel space-y-3 md:col-span-2">
-          <h2 className="font-semibold">Informations</h2>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="font-semibold">Informations</h2>
+            {!isEditingInfo ? (
+              <button
+                type="button"
+                className="sp-button sp-button-xs sp-button-indigo"
+                onClick={() => {
+                  setInfoClubDraft(player.club ?? "");
+                  setIsEditingInfo(true);
+                  setInfoMessage("");
+                }}
+              >
+                <FontAwesomeIcon icon={faPenToSquare} className="mr-1" />
+                Modifier
+              </button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button type="button" className="sp-button sp-button-xs sp-button-blue" onClick={saveInfo}>
+                  Enregistrer
+                </button>
+                <button
+                  type="button"
+                  className="sp-button sp-button-xs sp-button-light"
+                  onClick={() => setIsEditingInfo(false)}
+                >
+                  Annuler
+                </button>
+              </div>
+            )}
+          </div>
+          {infoMessage && <p className="text-xs text-emerald-400">{infoMessage}</p>}
           <p className="text-sm text-neutral-200">
             <strong>Postes:</strong>{" "}
             {player.positions && player.positions.length > 0
@@ -187,6 +242,25 @@ export default function PlayerProfilePage() {
               </p>
             );
           })()}
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-neutral-300">Club</p>
+            {isEditingInfo ? (
+              <select
+                className="sp-input-control"
+                value={infoClubDraft}
+                onChange={(e) => setInfoClubDraft(e.target.value)}
+              >
+                <option value="">— Non renseigné —</option>
+                {clubOptions.map((c) => (
+                  <option key={c.name} value={c.name}>{c.name}</option>
+                ))}
+              </select>
+            ) : (
+              <p className="text-sm text-neutral-200">
+                {player.club ?? <span className="text-neutral-500 italic">Non renseigné</span>}
+              </p>
+            )}
+          </div>
         </section>
 
         {player.photoUrl && (

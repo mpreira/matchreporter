@@ -4,7 +4,7 @@ import crypto from "crypto";
 import { Pool } from "pg";
 import type { LiveSnapshot } from "~/types/live";
 import type { Roster, Team } from "~/types/tracker";
-import { getCompetitionScope } from "~/types/tracker";
+import { getCompetitionScope, getCompetitionGender } from "~/types/tracker";
 import { rosterStatePayloadSchema } from "~/utils/schemas.server";
 import { ALL_CLUBS } from "~/utils/clubs";
 
@@ -103,6 +103,9 @@ const ADMIN_ACCOUNT_PASSWORD = process.env.BOOTSTRAP_ADMIN_PASSWORD?.trim() || "
 const ANONYMOUS_SCOPE_PREFIX = "anon:";
 const ANONYMOUS_DATA_TTL_MS = 24 * 60 * 60 * 1000;
 const ANONYMOUS_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+const SEED_TEST_ACCOUNT_ID = process.env.SEED_TEST_ACCOUNT_ID?.trim() || "";
+const SEED_TEST_ACCOUNT_NAME = process.env.SEED_TEST_ACCOUNT_NAME?.trim() || "Compte test";
+const SEED_TEST_ACCOUNT_ACCESS_CODE = process.env.SEED_TEST_ACCOUNT_ACCESS_CODE?.trim() || "";
 
 const defaultRosterState: RosterStatePayload = {
   rosters: [],
@@ -580,6 +583,14 @@ async function initializeSchema(pool: Pool) {
 
     ALTER TABLE players ADD COLUMN IF NOT EXISTS national_roster_id TEXT;
     ALTER TABLE players ADD COLUMN IF NOT EXISTS international_roster_id TEXT;
+    ALTER TABLE players ADD COLUMN IF NOT EXISTS gender TEXT;
+
+    CREATE TABLE IF NOT EXISTS player_roster_memberships (
+      account_id TEXT NOT NULL,
+      player_id  TEXT NOT NULL,
+      roster_id  TEXT NOT NULL,
+      PRIMARY KEY (account_id, player_id, roster_id)
+    );
 
     CREATE TABLE IF NOT EXISTS titles (
       id SERIAL PRIMARY KEY,
@@ -646,6 +657,9 @@ async function initializeSchema(pool: Pool) {
     CREATE INDEX IF NOT EXISTS idx_stored_teams_roster_id ON stored_teams(account_id, roster_id);
     CREATE INDEX IF NOT EXISTS idx_players_account_id ON players(account_id);
     CREATE INDEX IF NOT EXISTS idx_players_name ON players(name);
+    CREATE INDEX IF NOT EXISTS idx_players_gender ON players(account_id, gender);
+    CREATE INDEX IF NOT EXISTS idx_player_roster_memberships_player ON player_roster_memberships(account_id, player_id);
+    CREATE INDEX IF NOT EXISTS idx_player_roster_memberships_roster ON player_roster_memberships(account_id, roster_id);
     CREATE INDEX IF NOT EXISTS idx_player_stats_account_id ON player_stats(account_id);
     CREATE INDEX IF NOT EXISTS idx_player_stats_player_id ON player_stats(account_id, player_id);
     CREATE INDEX IF NOT EXISTS idx_titles_roster ON titles(account_id, roster_id);
@@ -853,6 +867,7 @@ async function syncRosterDataToTables(
     await client.query("DELETE FROM player_stats WHERE account_id = $1", [accountId]);
     await client.query("DELETE FROM titles WHERE account_id = $1", [accountId]);
     await client.query("DELETE FROM stored_teams WHERE account_id = $1", [accountId]);
+    await client.query("DELETE FROM player_roster_memberships WHERE account_id = $1", [accountId]);
     await client.query("DELETE FROM players WHERE account_id = $1", [accountId]);
     await client.query("DELETE FROM stored_rosters WHERE account_id = $1", [accountId]);
 
@@ -903,6 +918,9 @@ async function syncRosterDataToTables(
 
       // 6. Insert players from this roster
       const rosterScope = getCompetitionScope(r.category);
+      const rosterGender = getCompetitionGender(r.category) === 'feminine' ? 'female'
+                         : getCompetitionGender(r.category) === 'masculine' ? 'male'
+                         : null;
       for (const p of rPlayers) {
         if (!p.id || !p.name) continue;
 
@@ -912,9 +930,9 @@ async function syncRosterDataToTables(
         await client.query(
           `INSERT INTO players
            (id, account_id, name, number, positions, photo_url, nationality, club,
-            national_roster_id, international_roster_id,
+            gender, national_roster_id, international_roster_id,
             created_at, updated_at, last_modified_by)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11,$12)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12,$13)
            ON CONFLICT (account_id, id) DO UPDATE SET
              name = EXCLUDED.name,
              number = EXCLUDED.number,
@@ -922,6 +940,7 @@ async function syncRosterDataToTables(
              photo_url = EXCLUDED.photo_url,
              nationality = EXCLUDED.nationality,
              club = COALESCE(EXCLUDED.club, players.club),
+             gender = COALESCE(EXCLUDED.gender, players.gender),
              national_roster_id = COALESCE(EXCLUDED.national_roster_id, players.national_roster_id),
              international_roster_id = COALESCE(EXCLUDED.international_roster_id, players.international_roster_id),
              updated_at = EXCLUDED.updated_at`,
@@ -934,11 +953,19 @@ async function syncRosterDataToTables(
             p.photoUrl ?? null,
             p.nationality ?? null,
             p.club ?? r.name,
+            rosterGender,
             nationalRosterId,
             internationalRosterId,
             nowIso,
             accountId,
           ]
+        );
+
+        // Insert membership
+        await client.query(
+          `INSERT INTO player_roster_memberships (account_id, player_id, roster_id)
+           VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+          [accountId, p.id, r.id]
         );
 
         // 7. Insert player_stats if present
@@ -1275,6 +1302,87 @@ async function backfillStructuredTables(pool: Pool): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Seed: default club rosters for a specific account
+// ---------------------------------------------------------------------------
+
+async function seedDefaultRostersForAccount(pool: Pool, accountId: string): Promise<void> {
+  const existing = await pool.query<{ name: string; category: string }>(
+    `SELECT name, category FROM stored_rosters WHERE account_id = $1`,
+    [accountId]
+  );
+  const existingKeys = new Set(
+    existing.rows.map((r) => `${r.name}||${r.category}`)
+  );
+
+  const missing = ALL_CLUBS.filter(
+    (c) => !existingKeys.has(`${c.name}||${c.category}`)
+  );
+  if (missing.length === 0) return;
+
+  console.log(`[seed] Account "${accountId}": adding ${missing.length} default club roster(s)…`);
+
+  const currentPayload = await pool.query<{ payload: string }>(
+    `SELECT payload FROM account_rosters_state WHERE account_id = $1`,
+    [accountId]
+  );
+  const parsed = currentPayload.rows[0]
+    ? parseJsonOrNull<RosterStatePayload>(currentPayload.rows[0].payload)
+    : null;
+
+  const existingRosters: Roster[] = parsed?.rosters ?? [];
+  const existingTeams: Team[] = parsed?.teams ?? [];
+
+  const newRosters: Roster[] = missing.map((c) => ({
+    id: crypto.randomUUID(),
+    name: c.name,
+    nickname: c.nickname,
+    color: c.color,
+    category: c.category,
+    players: [],
+    currentRanking: c.currentRanking,
+    currentPoints: c.currentPoints,
+  }));
+
+  const payload: RosterStatePayload = {
+    rosters: [...existingRosters, ...newRosters],
+    teams: existingTeams,
+    activeRosterId: parsed?.activeRosterId ?? null,
+    matchDay: parsed?.matchDay,
+    season: parsed?.season,
+    sport: parsed?.sport,
+    championship: parsed?.championship,
+  };
+
+  const now = new Date().toISOString();
+  await pool.query(
+    `INSERT INTO account_rosters_state (account_id, payload, updated_at)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (account_id) DO UPDATE SET payload = EXCLUDED.payload, updated_at = EXCLUDED.updated_at`,
+    [accountId, JSON.stringify(payload), now]
+  );
+  await syncRosterDataToTables(pool, accountId, payload);
+}
+
+async function ensureTestAccount(pool: Pool): Promise<void> {
+  if (!SEED_TEST_ACCOUNT_ID || !SEED_TEST_ACCOUNT_ACCESS_CODE) return;
+
+  const now = new Date().toISOString();
+  await pool.query(
+    `INSERT INTO accounts (id, name, email, password_hash, is_admin, access_code_hash, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, FALSE, $5, $6, $6)
+     ON CONFLICT (id) DO NOTHING`,
+    [
+      SEED_TEST_ACCOUNT_ID,
+      SEED_TEST_ACCOUNT_NAME,
+      `${SEED_TEST_ACCOUNT_ID}@seed.local`,
+      hashPassword(SEED_TEST_ACCOUNT_ACCESS_CODE),
+      hashAccountAccessCode(SEED_TEST_ACCOUNT_ACCESS_CODE),
+      now,
+    ]
+  );
+  await seedDefaultRostersForAccount(pool, SEED_TEST_ACCOUNT_ID);
+}
+
 // Seed: default club rosters (Top 14 + Pro D2) for the legacy account
 // ---------------------------------------------------------------------------
 
@@ -1348,6 +1456,7 @@ async function ensureInitialized() {
     await migrateFromJsonFiles(pool);
     await backfillStructuredTables(pool);
     await seedDefaultRosters(pool);
+    await ensureTestAccount(pool);
   })();
 
   await initializationPromise;
@@ -2307,6 +2416,8 @@ export interface DbPlayer {
   photoUrl: string | null;
   nationality: string | null;
   club: string | null;
+  gender: string | null;
+  rosterIds: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -2334,17 +2445,29 @@ function mapPlayerRow(row: Record<string, unknown>): DbPlayer {
     photoUrl: (row.photo_url as string) ?? null,
     nationality: (row.nationality as string) ?? null,
     club: (row.club as string) ?? null,
+    gender: (row.gender as string) ?? null,
+    rosterIds: Array.isArray(row.roster_ids) ? row.roster_ids as string[] : [],
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
 }
 
-export async function listPlayers(accountId: string): Promise<DbPlayer[]> {
+export async function listPlayers(
+  accountId: string,
+  options?: { gender?: string | null }
+): Promise<DbPlayer[]> {
   await ensureInitialized();
   const pool = getPool();
+  const gender = options?.gender;
   const result = await pool.query(
-    "SELECT * FROM players WHERE account_id = $1 ORDER BY name",
-    [accountId]
+    `SELECT p.*,
+       COALESCE(array_agg(m.roster_id) FILTER (WHERE m.roster_id IS NOT NULL), '{}') AS roster_ids
+     FROM players p
+     LEFT JOIN player_roster_memberships m ON m.account_id = p.account_id AND m.player_id = p.id
+     WHERE p.account_id = $1${gender ? " AND p.gender = $2" : ""}
+     GROUP BY p.id, p.account_id
+     ORDER BY p.name`,
+    gender ? [accountId, gender] : [accountId]
   );
   return result.rows.map(mapPlayerRow);
 }
@@ -2353,11 +2476,16 @@ export async function getPlayerById(accountId: string, playerId: string): Promis
   await ensureInitialized();
   const pool = getPool();
   const result = await pool.query(
-    `SELECT p.*, ps.points, ps.essais, ps.pied, ps.taux_transfo, ps.cartons,
-            ps.drops, ps.matchs_2526, ps.titularisations_2526
+    `SELECT p.*,
+       COALESCE(array_agg(m.roster_id) FILTER (WHERE m.roster_id IS NOT NULL), '{}') AS roster_ids,
+       ps.points, ps.essais, ps.pied, ps.taux_transfo, ps.cartons,
+       ps.drops, ps.matchs_2526, ps.titularisations_2526
      FROM players p
+     LEFT JOIN player_roster_memberships m ON m.account_id = p.account_id AND m.player_id = p.id
      LEFT JOIN player_stats ps ON ps.account_id = p.account_id AND ps.player_id = p.id
-     WHERE p.account_id = $1 AND p.id = $2`,
+     WHERE p.account_id = $1 AND p.id = $2
+     GROUP BY p.id, p.account_id, ps.points, ps.essais, ps.pied, ps.taux_transfo,
+              ps.cartons, ps.drops, ps.matchs_2526, ps.titularisations_2526`,
     [accountId, playerId]
   );
   const row = result.rows[0];
@@ -2380,16 +2508,17 @@ export async function getPlayerById(accountId: string, playerId: string): Promis
 export async function createPlayer(accountId: string, input: {
   id: string; name: string; number?: number | null; positions?: string[] | null;
   photoUrl?: string | null; nationality?: string | null; club?: string | null;
+  gender?: string | null;
 }): Promise<DbPlayer> {
   await ensureInitialized();
   const pool = getPool();
   const now = new Date().toISOString();
   const result = await pool.query(
-    `INSERT INTO players (id, account_id, name, number, positions, photo_url, nationality, club, created_at, updated_at, last_modified_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,$10)
+    `INSERT INTO players (id, account_id, name, number, positions, photo_url, nationality, club, gender, created_at, updated_at, last_modified_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10,$11)
      RETURNING *`,
     [input.id, accountId, input.name, input.number ?? null, JSON.stringify(input.positions ?? []),
-     input.photoUrl ?? null, input.nationality ?? null, input.club ?? null, now, accountId]
+     input.photoUrl ?? null, input.nationality ?? null, input.club ?? null, input.gender ?? null, now, accountId]
   );
   const player = mapPlayerRow(result.rows[0]);
   await insertAuditLog(pool, { tableName: "players", rowId: input.id, action: "INSERT", by: accountId, after: player as unknown as Record<string, unknown> });
@@ -2399,6 +2528,7 @@ export async function createPlayer(accountId: string, input: {
 export async function updatePlayer(accountId: string, playerId: string, input: {
   name?: string; number?: number | null; positions?: string[] | null;
   photoUrl?: string | null; nationality?: string | null; club?: string | null;
+  gender?: string | null;
 }): Promise<DbPlayer | null> {
   await ensureInitialized();
   const pool = getPool();
@@ -2412,12 +2542,14 @@ export async function updatePlayer(accountId: string, playerId: string, input: {
        photo_url = CASE WHEN $6::text IS NULL THEN photo_url ELSE $6 END,
        nationality = CASE WHEN $7::text IS NULL THEN nationality ELSE $7 END,
        club = CASE WHEN $8::text IS NULL THEN club ELSE $8 END,
+       gender = CASE WHEN $10::text IS NULL THEN gender ELSE $10 END,
        updated_at = $9
      WHERE account_id = $1 AND id = $2
      RETURNING *`,
     [accountId, playerId, input.name ?? null, input.number ?? null,
      input.positions ? JSON.stringify(input.positions) : null,
-     input.photoUrl ?? null, input.nationality ?? null, input.club ?? null, now]
+     input.photoUrl ?? null, input.nationality ?? null, input.club ?? null, now,
+     input.gender ?? null]
   );
   const row = result.rows[0];
   if (!row) return null;
@@ -2448,6 +2580,70 @@ export async function searchPlayers(accountId: string, query: string): Promise<D
   const result = await pool.query(
     "SELECT * FROM players WHERE account_id = $1 AND name ILIKE $2 ORDER BY name LIMIT 50",
     [accountId, `%${query}%`]
+  );
+  return result.rows.map(mapPlayerRow);
+}
+
+// ---------------------------------------------------------------------------
+// Player registry — roster memberships
+// ---------------------------------------------------------------------------
+
+export async function getPlayerRosterMemberships(
+  accountId: string,
+  playerId: string
+): Promise<string[]> {
+  await ensureInitialized();
+  const pool = getPool();
+  const result = await pool.query<{ roster_id: string }>(
+    `SELECT roster_id FROM player_roster_memberships WHERE account_id = $1 AND player_id = $2`,
+    [accountId, playerId]
+  );
+  return result.rows.map((r) => r.roster_id);
+}
+
+export async function linkPlayerToRoster(
+  accountId: string,
+  playerId: string,
+  rosterId: string
+): Promise<void> {
+  await ensureInitialized();
+  const pool = getPool();
+  await pool.query(
+    `INSERT INTO player_roster_memberships (account_id, player_id, roster_id)
+     VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+    [accountId, playerId, rosterId]
+  );
+}
+
+export async function unlinkPlayerFromRoster(
+  accountId: string,
+  playerId: string,
+  rosterId: string
+): Promise<void> {
+  await ensureInitialized();
+  const pool = getPool();
+  await pool.query(
+    `DELETE FROM player_roster_memberships WHERE account_id = $1 AND player_id = $2 AND roster_id = $3`,
+    [accountId, playerId, rosterId]
+  );
+}
+
+export async function getPlayersForRoster(
+  accountId: string,
+  rosterId: string
+): Promise<DbPlayer[]> {
+  await ensureInitialized();
+  const pool = getPool();
+  const result = await pool.query(
+    `SELECT p.*,
+       array_agg(m2.roster_id) FILTER (WHERE m2.roster_id IS NOT NULL) AS roster_ids
+     FROM player_roster_memberships m
+     JOIN players p ON p.account_id = m.account_id AND p.id = m.player_id
+     LEFT JOIN player_roster_memberships m2 ON m2.account_id = p.account_id AND m2.player_id = p.id
+     WHERE m.account_id = $1 AND m.roster_id = $2
+     GROUP BY p.id, p.account_id
+     ORDER BY p.name`,
+    [accountId, rosterId]
   );
   return result.rows.map(mapPlayerRow);
 }

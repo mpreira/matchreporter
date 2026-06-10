@@ -3,7 +3,8 @@ import { Link, useParams } from "react-router";
 import type { Route } from "./+types/roster-detail";
 import { useTeams } from "~/context/TeamsContext";
 import { toShortId, findFullId } from "~/utils/shortId";
-import { PLAYER_POSITIONS, CURRENT_SEASON, type PlayerPosition, type Team } from "~/types/tracker";
+import { PLAYER_POSITIONS, CURRENT_SEASON, type PlayerPosition, type Team, getCompetitionScope, getCompetitionGender } from "~/types/tracker";
+import { TOP14_CLUBS_2025_2026, PROD2_CLUBS_2025_2026, ELITE1_CLUBS_2025_2026 } from "~/utils/clubs";
 import {
     addPlayerToRosterList,
     createPlayerFromNames,
@@ -100,6 +101,8 @@ export default function RosterDetailPage() {
     const [newPlayerLastError, setNewPlayerLastError] = useState("");
     const [editingPlayerFirstError, setEditingPlayerFirstError] = useState("");
     const [editingPlayerLastError, setEditingPlayerLastError] = useState("");
+    const [newPlayerClub, setNewPlayerClub] = useState("");
+    const [editingPlayerClub, setEditingPlayerClub] = useState("");
     const [compositionEditTeamId, setCompositionEditTeamId] = useState<string | null>(null);
     const [selectedPlayerIds, setSelectedPlayerIds] = useState<Set<string>>(new Set());
     const [playerNumbers, setPlayerNumbers] = useState<Record<string, number>>({});
@@ -146,6 +149,12 @@ export default function RosterDetailPage() {
         () => (teams || []).filter((team) => team.rosterId === roster?.id),
         [teams, roster?.id]
     );
+
+    const isInternational = getCompetitionScope(roster?.category) === 'international';
+    const rosterGender = roster ? getCompetitionGender(roster.category) : 'masculine';
+    const clubOptions = rosterGender === 'feminine'
+        ? ELITE1_CLUBS_2025_2026
+        : [...TOP14_CLUBS_2025_2026, ...PROD2_CLUBS_2025_2026];
 
     const compositionEditTeam = useMemo(
         () => rosterTeams.find((team) => team.id === compositionEditTeamId) ?? null,
@@ -406,7 +415,8 @@ export default function RosterDetailPage() {
             formattedLast,
             newPlayerPositions,
             newPlayerPhotoUrl,
-            newPlayerNationality || undefined
+            newPlayerNationality || undefined,
+            isInternational ? newPlayerClub || undefined : undefined
         );
         const updatedRoster = addPlayerToRosterList(roster, player);
 
@@ -422,11 +432,12 @@ export default function RosterDetailPage() {
         setNewPlayerPositions([]);
         setNewPlayerPhotoUrl("");
         setNewPlayerNationality("");
+        setNewPlayerClub("");
         setNewPlayerFirstError("");
         setNewPlayerLastError("");
     }
 
-    function startEditPlayer(player: { id: string; name: string; positions?: PlayerPosition[]; photoUrl?: string; nationality?: string }) {
+    function startEditPlayer(player: { id: string; name: string; positions?: PlayerPosition[]; photoUrl?: string; nationality?: string; club?: string }) {
         const { first, last } = parsePlayerName(player.name);
         const formattedFirst = formatName(first);
         const formattedLast = formatName(last);
@@ -436,6 +447,7 @@ export default function RosterDetailPage() {
         setEditingPlayerPositions(player.positions ?? []);
         setEditingPlayerPhotoUrl(player.photoUrl ?? "");
         setEditingPlayerNationality(player.nationality ?? "");
+        setEditingPlayerClub(player.club ?? "");
         setEditingPlayerFirstError(validateName(formattedFirst));
         setEditingPlayerLastError(validateName(formattedLast));
         setPlayerMessage("");
@@ -448,6 +460,7 @@ export default function RosterDetailPage() {
         setEditingPlayerPositions([]);
         setEditingPlayerPhotoUrl("");
         setEditingPlayerNationality("");
+        setEditingPlayerClub("");
         setEditingPlayerFirstError("");
         setEditingPlayerLastError("");
     }
@@ -468,6 +481,7 @@ export default function RosterDetailPage() {
             positions: editingPlayerPositions,
             photoUrl: editingPlayerPhotoUrl,
             nationality: editingPlayerNationality || undefined,
+            club: editingPlayerClub || undefined,
         });
         setRosters(rosters.map((r) => (r.id === roster.id ? syncRosterCurrentSeason(updatedRoster) : r)));
         cancelEditPlayer();
@@ -895,6 +909,28 @@ export default function RosterDetailPage() {
                                     ))}
                                 </select>
                             </div>
+                            {isInternational && (
+                                <>
+                                    <div className="sp-input-shell">
+                                        <label className="sp-input-label">Sélection</label>
+                                        <input className="sp-input-control opacity-60" value={roster.name} readOnly disabled />
+                                    </div>
+                                    <div className="sp-input-shell">
+                                        <label className="sp-input-label" htmlFor="newPlayerClub">Club</label>
+                                        <select
+                                            id="newPlayerClub"
+                                            className="sp-input-control"
+                                            value={newPlayerClub}
+                                            onChange={(event) => setNewPlayerClub(event.target.value)}
+                                        >
+                                            <option value="">— Non renseigné —</option>
+                                            {clubOptions.map((c) => (
+                                                <option key={c.name} value={c.name}>{c.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </>
+                            )}
                             <div className="flex items-center justify-center gap-2">
                                 <button
                                     className="sp-button sp-button-sm sp-button-blue"
@@ -1032,6 +1068,20 @@ export default function RosterDetailPage() {
                                     <option value="">— Non renseignée —</option>
                                     {COUNTRIES.map((c) => (
                                         <option key={c.code} value={c.code}>{c.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="sp-input-shell">
+                                <label className="sp-input-label" htmlFor="editingPlayerClub">Club</label>
+                                <select
+                                    id="editingPlayerClub"
+                                    className="sp-input-control"
+                                    value={editingPlayerClub}
+                                    onChange={(event) => setEditingPlayerClub(event.target.value)}
+                                >
+                                    <option value="">— Non renseigné —</option>
+                                    {clubOptions.map((c) => (
+                                        <option key={c.name} value={c.name}>{c.name}</option>
                                     ))}
                                 </select>
                             </div>

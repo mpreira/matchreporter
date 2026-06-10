@@ -47,6 +47,8 @@ export interface PlayerStats {
     titularisations2526: number;
 }
 
+export type PlayerGender = 'male' | 'female';
+
 export interface Player {
     id: string;
     name: string;
@@ -55,9 +57,11 @@ export interface Player {
     photoUrl?: string;
     nationality?: string; // ISO 3166-1 alpha-2 code
     club?: string;
+    gender?: PlayerGender;
     stats?: PlayerStats;
     nationalRosterId?: string;       // FK → Roster.id (équipe nationale/club)
     internationalRosterId?: string;  // FK → Roster.id (sélection internationale)
+    rosterIds?: string[];            // tous les effectifs auxquels appartient ce joueur
 }
 
 export interface CompositionEntry {

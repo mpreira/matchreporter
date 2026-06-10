@@ -68,7 +68,7 @@ export function deletePlayerFromRoster(roster: Roster, playerId: string): Roster
 export function updatePlayerInRoster(
     roster: Roster,
     playerId: string,
-    updates: { name: string; positions?: PlayerPosition[]; photoUrl?: string; nationality?: string }
+    updates: { name: string; positions?: PlayerPosition[]; photoUrl?: string; nationality?: string; club?: string }
 ): Roster {
     return {
         ...roster,
@@ -83,7 +83,8 @@ export function createPlayerFromNames(
     last: string,
     positions?: PlayerPosition[],
     photoUrl?: string,
-    nationality?: string
+    nationality?: string,
+    club?: string
 ): Player {
     const name = `${first} ${last}`.trim();
     return {
@@ -92,6 +93,7 @@ export function createPlayerFromNames(
         positions: positions && positions.length > 0 ? positions : undefined,
         photoUrl: photoUrl?.trim() ? photoUrl.trim() : undefined,
         nationality: nationality?.trim() ? nationality.trim() : undefined,
+        club: club?.trim() ? club.trim() : undefined,
     };
 }
 
