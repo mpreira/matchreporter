@@ -168,23 +168,43 @@ export default function PlayerProfilePage() {
     const targetRoster = rosters.find((r) => r.id === selectedNationalRosterId);
     if (!targetRoster) return;
     const updatedRoster = addPlayerToRosterList(targetRoster, { ...player });
-    setRosters(rosters.map((r) => r.id === updatedRoster.id ? updatedRoster : r));
+    setRosters((prev) => prev.map((r) => r.id === updatedRoster.id ? updatedRoster : r));
     setSelectedNationalRosterId("");
     setNationalRosterMessage(`${player.name} ajouté·e à ${targetRoster.name}.`);
   }
 
   function saveInfo() {
     if (!roster || !player) return;
-    const updatedRoster = updatePlayerInRoster(roster, player.id, {
+    const updatedPlayer = updatePlayerInRoster(roster, player.id, {
       name: player.name,
       positions: player.positions,
       photoUrl: player.photoUrl,
       nationality: player.nationality,
       club: infoClubDraft || undefined,
     });
-    setRosters(rosters.map((r) => r.id === roster.id ? updatedRoster : r));
+    const playerWithClub = updatedPlayer.players.find(p => p.id === player.id);
+    // For international players: if a club is selected, auto-add to the matching national roster
+    const newClub = infoClubDraft.trim();
+    const matchingNationalRoster = isInternational && newClub && playerWithClub
+      ? rosters.find((r) =>
+          r.id !== roster.id &&
+          r.name === newClub &&
+          getCompetitionScope(r.category) === 'national' &&
+          !r.players.some((p) => p.id === player.id)
+        )
+      : null;
+    setRosters((prev) => prev.map((r) => {
+      if (r.id === roster.id) return updatedPlayer;
+      if (matchingNationalRoster && r.id === matchingNationalRoster.id && playerWithClub) {
+        return addPlayerToRosterList(r, playerWithClub);
+      }
+      return r;
+    }));
     setIsEditingInfo(false);
-    setInfoMessage("Club mis à jour.");
+    setInfoMessage(matchingNationalRoster
+      ? `Club mis à jour. ${player.name} ajouté·e à l’effectif ${matchingNationalRoster.name}.`
+      : "Club mis à jour."
+    );
   }
 
   const backPath = getRosterBackPath(rosterId ? toShortId(rosterId) : undefined);
