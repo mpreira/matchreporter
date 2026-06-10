@@ -50,8 +50,8 @@ export default function RosterManager({
     const [newRosterPresident, setNewRosterPresident] = useState("");
     const [newRosterFoundedIn, setNewRosterFoundedIn] = useState("");
     const [newRosterTitles, setNewRosterTitles] = useState("");
-    const [newRosterCategory, setNewRosterCategory] = useState<'Top 14' | 'Pro D2' | 'Women\'s Six Nations' | 'World Series'>('Top 14');
-    const championshipOptions = ['Top 14', 'Pro D2', 'Women\'s Six Nations', 'World Series'] as const;
+    const [newRosterCategory, setNewRosterCategory] = useState<'Top 14' | 'Pro D2' | 'Elite 1' | 'Women\'s Six Nations' | 'World Series'>('Top 14');
+    const championshipOptions = ['Top 14', 'Pro D2', 'Elite 1', 'Women\'s Six Nations', 'World Series'] as const;
     const [showCreateRosterForm, setShowCreateRosterForm] = useState(false);
     const [activeCategoryTab, setActiveCategoryTab] = useState<'Top 14' | 'Pro D2' | 'Elite 1' | 'Women\'s Six Nations' | 'World Series'>('Top 14');
     const [rosterFeedbackMessage, setRosterFeedbackMessage] = useState("");
