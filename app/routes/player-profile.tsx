@@ -7,7 +7,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowLeft, faPenToSquare } from "@fortawesome/free-solid-svg-icons";
 import { getFlagUrl, getCountryByCode } from "~/utils/countries";
 import type { PlayerStats } from "~/types/tracker";
-import { getCompetitionGender, getCompetitionScope, NATIONAL_CHAMPIONSHIPS } from "~/types/tracker";
+import { getCompetitionGender, getCompetitionScope } from "~/types/tracker";
 import { TOP14_CLUBS_2025_2026, PROD2_CLUBS_2025_2026, ELITE1_CLUBS_2025_2026 } from "~/utils/clubs";
 import { updatePlayerInRoster, addPlayerToRosterList } from "~/utils/RosterUtils";
 
@@ -145,28 +145,25 @@ export default function PlayerProfilePage() {
     setIsEditingStats(false);
   }
 
+  const isInternational = getCompetitionScope(roster?.category) === 'international';
   const rosterGender = roster ? getCompetitionGender(roster.category) : 'masculine';
   const clubOptions = rosterGender === 'feminine'
     ? ELITE1_CLUBS_2025_2026
     : [...TOP14_CLUBS_2025_2026, ...PROD2_CLUBS_2025_2026];
 
-  // National rosters compatible with this player's gender that don't already contain them
-  const availableNationalRosters = useMemo(() => {
-    if (!player) return [];
-    const nationalCategories = rosterGender === 'feminine'
-      ? ["Elite 1"]
-      : rosterGender === 'masculine'
-      ? ["Top 14", "Pro D2"]
-      : NATIONAL_CHAMPIONSHIPS as readonly string[];
+  // Available international rosters for national roster players (filtered by gender compatibility)
+  const availableInternationalRosters = useMemo(() => {
+    if (!player || isInternational) return [];
     return rosters.filter((r) =>
       r.id !== rosterId &&
-      r.category && nationalCategories.includes(r.category) &&
-      getCompetitionScope(r.category) === 'national' &&
+      r.category &&
+      getCompetitionScope(r.category) === 'international' &&
+      (getCompetitionGender(r.category) === 'mixed' || getCompetitionGender(r.category) === rosterGender) &&
       !r.players.some((p) => p.id === player.id)
     ).sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
-  }, [rosters, player, rosterId, rosterGender]);
+  }, [rosters, player, rosterId, rosterGender, isInternational]);
 
-  function addToNationalRoster() {
+  function addToInternationalRoster() {
     if (!player || !selectedNationalRosterId) return;
     const targetRoster = rosters.find((r) => r.id === selectedNationalRosterId);
     if (!targetRoster) return;
@@ -224,7 +221,7 @@ export default function PlayerProfilePage() {
                 type="button"
                 className="sp-button sp-button-xs sp-button-indigo"
                 onClick={() => {
-                  setInfoClubDraft(player.club ?? "");
+                  setInfoClubDraft(player.club ?? (!isInternational ? roster.name : ""));
                   setIsEditingInfo(true);
                   setInfoMessage("");
                 }}
@@ -248,6 +245,12 @@ export default function PlayerProfilePage() {
             )}
           </div>
           {infoMessage && <p className="text-xs text-emerald-400">{infoMessage}</p>}
+          {isInternational && (
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-neutral-300">Sélection :</p>
+              <p className="text-sm text-neutral-200">{roster.name}</p>
+            </div>
+          )}
           <p className="text-sm text-neutral-200">
             <strong>Postes:</strong>{" "}
             {player.positions && player.positions.length > 0
@@ -302,15 +305,15 @@ export default function PlayerProfilePage() {
         )}
       </div>
 
-      {availableNationalRosters.length > 0 && (
+      {!isInternational && availableInternationalRosters.length > 0 && (
         <section className="sp-panel space-y-3">
-          <h2 className="font-semibold">Ajouter à un effectif national</h2>
+          <h2 className="font-semibold">Ajouter à une sélection internationale</h2>
           {nationalRosterMessage && (
             <p className="text-xs text-emerald-400">{nationalRosterMessage}</p>
           )}
           <div className="flex items-end gap-2 flex-wrap">
             <div className="sp-input-shell flex-1 min-w-[12rem]">
-              <label className="sp-input-label" htmlFor="nationalRosterSelect">Effectif</label>
+              <label className="sp-input-label" htmlFor="nationalRosterSelect">Sélection</label>
               <select
                 id="nationalRosterSelect"
                 className="sp-input-control"
@@ -320,8 +323,8 @@ export default function PlayerProfilePage() {
                   setNationalRosterMessage("");
                 }}
               >
-                <option value="">— Choisir un effectif —</option>
-                {availableNationalRosters.map((r) => (
+                <option value="">— Choisir une sélection —</option>
+                {availableInternationalRosters.map((r) => (
                   <option key={r.id} value={r.id}>
                     {r.name}{r.category ? ` (${r.category})` : ""}
                   </option>
@@ -332,7 +335,7 @@ export default function PlayerProfilePage() {
               type="button"
               className="sp-button sp-button-sm sp-button-blue"
               disabled={!selectedNationalRosterId}
-              onClick={addToNationalRoster}
+              onClick={addToInternationalRoster}
             >
               Ajouter
             </button>

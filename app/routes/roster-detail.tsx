@@ -103,6 +103,8 @@ export default function RosterDetailPage() {
     const [editingPlayerLastError, setEditingPlayerLastError] = useState("");
     const [newPlayerClub, setNewPlayerClub] = useState("");
     const [editingPlayerClub, setEditingPlayerClub] = useState("");
+    const [newPlayerInternationalRosterId, setNewPlayerInternationalRosterId] = useState("");
+    const [editingPlayerInternationalRosterId, setEditingPlayerInternationalRosterId] = useState("");
     const [compositionEditTeamId, setCompositionEditTeamId] = useState<string | null>(null);
     const [selectedPlayerIds, setSelectedPlayerIds] = useState<Set<string>>(new Set());
     const [playerNumbers, setPlayerNumbers] = useState<Record<string, number>>({});
@@ -155,6 +157,16 @@ export default function RosterDetailPage() {
     const clubOptions = rosterGender === 'feminine'
         ? ELITE1_CLUBS_2025_2026
         : [...TOP14_CLUBS_2025_2026, ...PROD2_CLUBS_2025_2026];
+
+    const availableInternationalRosters = useMemo(() => {
+        if (!roster || isInternational) return [];
+        return rosters.filter((r) =>
+            r.id !== roster.id &&
+            r.category &&
+            getCompetitionScope(r.category) === 'international' &&
+            (getCompetitionGender(r.category) === 'mixed' || getCompetitionGender(r.category) === rosterGender)
+        ).sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
+    }, [rosters, roster, isInternational, rosterGender]);
 
     const compositionEditTeam = useMemo(
         () => rosterTeams.find((team) => team.id === compositionEditTeamId) ?? null,
@@ -416,11 +428,17 @@ export default function RosterDetailPage() {
             newPlayerPositions,
             newPlayerPhotoUrl,
             newPlayerNationality || undefined,
-            isInternational ? newPlayerClub || undefined : undefined
+            isInternational ? (newPlayerClub || undefined) : roster.name
         );
         const updatedRoster = addPlayerToRosterList(roster, player);
 
-        setRosters(rosters.map((r) => (r.id === roster.id ? syncRosterCurrentSeason(updatedRoster) : r)));
+        setRosters(rosters.map((r) => {
+            if (r.id === roster.id) return syncRosterCurrentSeason(updatedRoster);
+            if (!isInternational && newPlayerInternationalRosterId && r.id === newPlayerInternationalRosterId && !r.players.some(p => p.id === player.id)) {
+                return addPlayerToRosterList(r, player);
+            }
+            return r;
+        }));
         closeAddPlayerForm();
         setPlayerMessage("Joueur ajouté à l'effectif.");
     }
@@ -433,6 +451,7 @@ export default function RosterDetailPage() {
         setNewPlayerPhotoUrl("");
         setNewPlayerNationality("");
         setNewPlayerClub("");
+        setNewPlayerInternationalRosterId("");
         setNewPlayerFirstError("");
         setNewPlayerLastError("");
     }
@@ -447,7 +466,12 @@ export default function RosterDetailPage() {
         setEditingPlayerPositions(player.positions ?? []);
         setEditingPlayerPhotoUrl(player.photoUrl ?? "");
         setEditingPlayerNationality(player.nationality ?? "");
-        setEditingPlayerClub(player.club ?? "");
+        setEditingPlayerClub(!isInternational ? (player.club ?? roster?.name ?? "") : (player.club ?? ""));
+        // Pre-select current international roster if already linked
+        const currentIntlRosterId = !isInternational
+            ? rosters.find(r => r.id !== roster?.id && r.category && getCompetitionScope(r.category) === 'international' && r.players.some(p => p.id === player.id))?.id ?? ""
+            : "";
+        setEditingPlayerInternationalRosterId(currentIntlRosterId);
         setEditingPlayerFirstError(validateName(formattedFirst));
         setEditingPlayerLastError(validateName(formattedLast));
         setPlayerMessage("");
@@ -461,6 +485,7 @@ export default function RosterDetailPage() {
         setEditingPlayerPhotoUrl("");
         setEditingPlayerNationality("");
         setEditingPlayerClub("");
+        setEditingPlayerInternationalRosterId("");
         setEditingPlayerFirstError("");
         setEditingPlayerLastError("");
     }
@@ -483,7 +508,14 @@ export default function RosterDetailPage() {
             nationality: editingPlayerNationality || undefined,
             club: editingPlayerClub || undefined,
         });
-        setRosters(rosters.map((r) => (r.id === roster.id ? syncRosterCurrentSeason(updatedRoster) : r)));
+        const updatedPlayer = updatedRoster.players.find(p => p.id === editingPlayerId);
+        setRosters(rosters.map((r) => {
+            if (r.id === roster.id) return syncRosterCurrentSeason(updatedRoster);
+            if (!isInternational && updatedPlayer && editingPlayerInternationalRosterId && r.id === editingPlayerInternationalRosterId && !r.players.some(p => p.id === editingPlayerId)) {
+                return addPlayerToRosterList(r, updatedPlayer);
+            }
+            return r;
+        }));
         cancelEditPlayer();
         setPlayerMessage("Joueur modifié.");
     }
@@ -909,7 +941,7 @@ export default function RosterDetailPage() {
                                     ))}
                                 </select>
                             </div>
-                            {isInternational && (
+                            {isInternational ? (
                                 <>
                                     <div className="sp-input-shell">
                                         <label className="sp-input-label">Sélection</label>
@@ -930,6 +962,21 @@ export default function RosterDetailPage() {
                                         </select>
                                     </div>
                                 </>
+                            ) : availableInternationalRosters.length > 0 && (
+                                <div className="sp-input-shell">
+                                    <label className="sp-input-label" htmlFor="newPlayerInternational">Sélection internationale (facultatif)</label>
+                                    <select
+                                        id="newPlayerInternational"
+                                        className="sp-input-control"
+                                        value={newPlayerInternationalRosterId}
+                                        onChange={(event) => setNewPlayerInternationalRosterId(event.target.value)}
+                                    >
+                                        <option value="">— Aucune —</option>
+                                        {availableInternationalRosters.map((r) => (
+                                            <option key={r.id} value={r.id}>{r.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
                             )}
                             <div className="flex items-center justify-center gap-2">
                                 <button
@@ -1071,20 +1118,37 @@ export default function RosterDetailPage() {
                                     ))}
                                 </select>
                             </div>
-                            <div className="sp-input-shell">
-                                <label className="sp-input-label" htmlFor="editingPlayerClub">Club</label>
-                                <select
-                                    id="editingPlayerClub"
-                                    className="sp-input-control"
-                                    value={editingPlayerClub}
-                                    onChange={(event) => setEditingPlayerClub(event.target.value)}
-                                >
-                                    <option value="">— Non renseigné —</option>
-                                    {clubOptions.map((c) => (
-                                        <option key={c.name} value={c.name}>{c.name}</option>
-                                    ))}
-                                </select>
-                            </div>
+                            {isInternational ? (
+                                <div className="sp-input-shell">
+                                    <label className="sp-input-label" htmlFor="editingPlayerClub">Club</label>
+                                    <select
+                                        id="editingPlayerClub"
+                                        className="sp-input-control"
+                                        value={editingPlayerClub}
+                                        onChange={(event) => setEditingPlayerClub(event.target.value)}
+                                    >
+                                        <option value="">— Non renseigné —</option>
+                                        {clubOptions.map((c) => (
+                                            <option key={c.name} value={c.name}>{c.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            ) : availableInternationalRosters.length > 0 && (
+                                <div className="sp-input-shell">
+                                    <label className="sp-input-label" htmlFor="editingPlayerInternational">Sélection internationale (facultatif)</label>
+                                    <select
+                                        id="editingPlayerInternational"
+                                        className="sp-input-control"
+                                        value={editingPlayerInternationalRosterId}
+                                        onChange={(event) => setEditingPlayerInternationalRosterId(event.target.value)}
+                                    >
+                                        <option value="">— Aucune —</option>
+                                        {availableInternationalRosters.map((r) => (
+                                            <option key={r.id} value={r.id}>{r.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
                             <div className="flex items-center justify-center gap-2">
                                 <button
                                     className="sp-button sp-button-sm sp-button-blue h-36px"
