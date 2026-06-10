@@ -147,11 +147,48 @@ export default function PlayerProfilePage() {
 
   const isInternational = getCompetitionScope(roster?.category) === 'international';
   const rosterGender = roster ? getCompetitionGender(roster.category) : 'masculine';
-  const clubOptions = rosterGender === 'feminine'
-    ? ELITE1_CLUBS_2025_2026
-    : [...TOP14_CLUBS_2025_2026, ...PROD2_CLUBS_2025_2026];
 
-  // Available international rosters for national roster players (filtered by gender compatibility)
+  // National rosters compatible with this player's gender (for club selector)
+  const nationalClubRosters = useMemo(() => {
+    if (!roster) return [];
+    return rosters.filter((r) =>
+      r.id !== roster.id &&
+      r.category &&
+      getCompetitionScope(r.category) === 'national' &&
+      (getCompetitionGender(r.category) === 'mixed' || getCompetitionGender(r.category) === rosterGender)
+    ).sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
+  }, [rosters, roster, rosterGender]);
+
+  // State stores the roster ID (not name) for reliable matching
+  const [infoClubRosterId, setInfoClubRosterId] = useState("");
+
+  // National roster matching the player's club (gender-aware)
+  const clubLinkedNationalRoster = useMemo(() => {
+    if (!player?.club || !roster) return null;
+    const club = player.club.trim();
+    // For international rosters: find the national roster with this name, filtered by gender
+    if (isInternational) {
+      return rosters.find((r) =>
+        r.name === club &&
+        r.id !== rosterId &&
+        getCompetitionScope(r.category) === 'national' &&
+        (getCompetitionGender(r.category) === rosterGender || getCompetitionGender(r.category) === 'mixed')
+      ) ?? null;
+    }
+    return null;
+  }, [rosters, player?.club, roster, rosterId, isInternational, rosterGender]);
+
+  const isAlreadyInClubRoster = clubLinkedNationalRoster
+    ? clubLinkedNationalRoster.players.some((p) => p.id === player?.id)
+    : false;
+
+  function syncToClubRoster() {
+    if (!player || !clubLinkedNationalRoster || isAlreadyInClubRoster) return;
+    const updatedRoster = addPlayerToRosterList(clubLinkedNationalRoster, { ...player });
+    setRosters((prev) => prev.map((r) => r.id === updatedRoster.id ? updatedRoster : r));
+    setNationalRosterMessage(`${player.name} ajouté·e à ${clubLinkedNationalRoster.name}.`);
+  }
+
   const availableInternationalRosters = useMemo(() => {
     if (!player || isInternational) return [];
     return rosters.filter((r) =>
@@ -175,26 +212,27 @@ export default function PlayerProfilePage() {
 
   function saveInfo() {
     if (!roster || !player) return;
-    const updatedPlayer = updatePlayerInRoster(roster, player.id, {
+    const updatedRoster = updatePlayerInRoster(roster, player.id, {
       name: player.name,
       positions: player.positions,
       photoUrl: player.photoUrl,
       nationality: player.nationality,
       club: infoClubDraft || undefined,
     });
-    const playerWithClub = updatedPlayer.players.find(p => p.id === player.id);
-    // For international players: if a club is selected, auto-add to the matching national roster
+    const playerWithClub = updatedRoster.players.find(p => p.id === player.id);
     const newClub = infoClubDraft.trim();
+    // Gender-aware: only match national roster with same name AND compatible gender
     const matchingNationalRoster = isInternational && newClub && playerWithClub
       ? rosters.find((r) =>
           r.id !== roster.id &&
           r.name === newClub &&
           getCompetitionScope(r.category) === 'national' &&
+          (getCompetitionGender(r.category) === rosterGender || getCompetitionGender(r.category) === 'mixed') &&
           !r.players.some((p) => p.id === player.id)
         )
       : null;
     setRosters((prev) => prev.map((r) => {
-      if (r.id === roster.id) return updatedPlayer;
+      if (r.id === roster.id) return updatedRoster;
       if (matchingNationalRoster && r.id === matchingNationalRoster.id && playerWithClub) {
         return addPlayerToRosterList(r, playerWithClub);
       }
@@ -241,7 +279,10 @@ export default function PlayerProfilePage() {
                 type="button"
                 className="sp-button sp-button-xs sp-button-indigo"
                 onClick={() => {
-                  setInfoClubDraft(player.club ?? (!isInternational ? roster.name : ""));
+                  // Pre-select the current club roster if one matches
+                  const currentClubRoster = nationalClubRosters.find(r => r.name === player.club);
+                  setInfoClubRosterId(currentClubRoster?.id ?? "");
+                  setInfoClubDraft(player.club ?? "");
                   setIsEditingInfo(true);
                   setInfoMessage("");
                 }}
@@ -294,18 +335,29 @@ export default function PlayerProfilePage() {
             );
           })()}
           <div className="space-y-1">
-            <p className="text-sm font-semibold text-neutral-300">Club:</p>
-            {isEditingInfo ? (
+            <p className="text-sm font-semibold text-neutral-300">Club :</p>
+            {isEditingInfo && isInternational ? (
               <select
+                className="sp-input-control"
+                value={infoClubRosterId}
+                onChange={(e) => {
+                  setInfoClubRosterId(e.target.value);
+                  const r = nationalClubRosters.find(r => r.id === e.target.value);
+                  setInfoClubDraft(r?.name ?? "");
+                }}
+              >
+                <option value="">— Non renseigné —</option>
+                {nationalClubRosters.map((r) => (
+                  <option key={r.id} value={r.id}>{r.name}{r.category && r.category !== roster.category ? ` (${r.category})` : ""}</option>
+                ))}
+              </select>
+            ) : isEditingInfo ? (
+              <input
                 className="sp-input-control"
                 value={infoClubDraft}
                 onChange={(e) => setInfoClubDraft(e.target.value)}
-              >
-                <option value="">— Non renseigné —</option>
-                {clubOptions.map((c) => (
-                  <option key={c.name} value={c.name}>{c.name}</option>
-                ))}
-              </select>
+                placeholder="Nom du club"
+              />
             ) : (
               <p className="text-sm text-neutral-200">
                 {player.club ?? <span className="text-neutral-500 italic">Non renseigné</span>}
@@ -324,6 +376,27 @@ export default function PlayerProfilePage() {
           </aside>
         )}
       </div>
+
+      {isInternational && clubLinkedNationalRoster && !isAlreadyInClubRoster && (
+        <section className="sp-panel space-y-3 border-amber-700/50">
+          <h2 className="font-semibold text-amber-300">Synchronisation effectif club</h2>
+          <p className="text-sm text-neutral-300">
+            Le club <strong>{player.club}</strong> est renseigné mais{" "}
+            <strong>{player.name}</strong> ne figure pas encore dans l&apos;effectif{" "}
+            <strong>{clubLinkedNationalRoster.name}</strong>.
+          </p>
+          {nationalRosterMessage && (
+            <p className="text-xs text-emerald-400">{nationalRosterMessage}</p>
+          )}
+          <button
+            type="button"
+            className="sp-button sp-button-sm sp-button-blue"
+            onClick={syncToClubRoster}
+          >
+            Ajouter à {clubLinkedNationalRoster.name}
+          </button>
+        </section>
+      )}
 
       {!isInternational && availableInternationalRosters.length > 0 && (
         <section className="sp-panel space-y-3">
@@ -521,3 +594,4 @@ export default function PlayerProfilePage() {
     </main>
   );
 }
+
