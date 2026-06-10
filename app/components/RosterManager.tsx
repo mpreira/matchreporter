@@ -485,7 +485,7 @@ export default function RosterManager({
                                 id="newRosterCategory"
                                 className="sp-input-control"
                                 value={newRosterCategory}
-                                onChange={(e) => setNewRosterCategory(e.target.value as 'Top 14' | 'Pro D2' | 'Women\'s Six Nations' | 'World Series')}
+                                onChange={(e) => setNewRosterCategory(e.target.value as 'Top 14' | 'Pro D2' | 'Elite 1' | 'Women\'s Six Nations' | 'World Series')}
                             >
                                 {championshipOptions.map((option) => (
                                     <option key={option} value={option}>

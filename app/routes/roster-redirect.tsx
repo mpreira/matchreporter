@@ -16,9 +16,10 @@ function getRosterIdFromParam(rosterSlugId: string | undefined): string | null {
     return rosterSlugId.slice(idx + 1);
 }
 
-function getRosterPath(category: "Top 14" | "Pro D2" | "Women's Six Nations" | "World Series" | undefined, name: string, id: string) {
+function getRosterPath(category: "Top 14" | "Pro D2" | "Elite 1" | "Women's Six Nations" | "World Series" | undefined, name: string, id: string) {
     let championshipSlug: string;
     if (category === "Pro D2") championshipSlug = "prod2";
+    else if (category === "Elite 1") championshipSlug = "elite1";
     else if (category === "Women's Six Nations") championshipSlug = "w6n";
     else if (category === "World Series") championshipSlug = "world-series";
     else championshipSlug = "top14";

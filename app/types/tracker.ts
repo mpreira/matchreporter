@@ -1,3 +1,16 @@
+export type Championship = 'Top 14' | 'Pro D2' | 'Elite 1' | "Women's Six Nations" | 'World Series';
+
+export type CompetitionScope = 'national' | 'international';
+
+export const NATIONAL_CHAMPIONSHIPS: readonly Championship[] = ['Top 14', 'Pro D2', 'Elite 1'] as const;
+export const INTERNATIONAL_CHAMPIONSHIPS: readonly Championship[] = ["Women's Six Nations", 'World Series'] as const;
+
+export function getCompetitionScope(championship: string | undefined): CompetitionScope {
+    return INTERNATIONAL_CHAMPIONSHIPS.includes(championship as Championship)
+        ? 'international'
+        : 'national';
+}
+
 export const PLAYER_POSITIONS = [
     "première ligne",
     "talonneur",
@@ -32,6 +45,8 @@ export interface Player {
     nationality?: string; // ISO 3166-1 alpha-2 code
     club?: string;
     stats?: PlayerStats;
+    nationalRosterId?: string;       // FK → Roster.id (équipe nationale/club)
+    internationalRosterId?: string;  // FK → Roster.id (sélection internationale)
 }
 
 export interface CompositionEntry {
@@ -101,7 +116,7 @@ export interface Roster {
     presidentData?: President;
     players: Player[]; // effectif global (mirrors current season)
     seasons?: Record<string, SeasonData>;
-    category?: 'Top 14' | 'Pro D2' | 'Women\'s Six Nations' | 'World Series';
+    category?: 'Top 14' | 'Pro D2' | 'Elite 1' | 'Women\'s Six Nations' | 'World Series';
     founded_in?: number; // year of creation
     titles?: Title[]; // list of titles won
     currentRanking?: number; // current league ranking

@@ -4,10 +4,11 @@ import crypto from "crypto";
 import { Pool } from "pg";
 import type { LiveSnapshot } from "~/types/live";
 import type { Roster, Team } from "~/types/tracker";
+import { getCompetitionScope } from "~/types/tracker";
 import { rosterStatePayloadSchema } from "~/utils/schemas.server";
 
 type Sport = "Rugby" | "Football";
-type Championship = "Top 14" | "Pro D2" | "Women's Six Nations" | "World Series";
+type Championship = "Top 14" | "Pro D2" | "Elite 1" | "Women's Six Nations" | "World Series";
 
 export interface RosterStatePayload {
   rosters: Roster[];
@@ -444,7 +445,6 @@ async function initializeSchema(pool: Pool) {
     ALTER TABLE accounts ADD COLUMN IF NOT EXISTS last_modified_by TEXT;
     ALTER TABLE summaries ADD COLUMN IF NOT EXISTS last_modified_by TEXT;
     ALTER TABLE match_day_selections ADD COLUMN IF NOT EXISTS last_modified_by TEXT;
-    ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS last_modified_by TEXT;
 
     CREATE INDEX IF NOT EXISTS idx_live_matches_public_slug ON live_matches(public_slug);
     CREATE INDEX IF NOT EXISTS idx_live_matches_expires_at ON live_matches(expires_at);
@@ -574,6 +574,11 @@ async function initializeSchema(pool: Pool) {
       UNIQUE (account_id, player_id)
     );
 
+    ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS last_modified_by TEXT;
+
+    ALTER TABLE players ADD COLUMN IF NOT EXISTS national_roster_id TEXT;
+    ALTER TABLE players ADD COLUMN IF NOT EXISTS international_roster_id TEXT;
+
     CREATE TABLE IF NOT EXISTS titles (
       id SERIAL PRIMARY KEY,
       account_id TEXT,
@@ -689,6 +694,8 @@ async function initializeSchema(pool: Pool) {
   await addForeignKeyIfMissing(pool, "fk_stored_teams_account", "stored_teams", "FOREIGN KEY (account_id) REFERENCES accounts(id)");
   await addForeignKeyIfMissing(pool, "fk_stored_teams_roster", "stored_teams", "FOREIGN KEY (account_id, roster_id) REFERENCES stored_rosters(account_id, id)");
   await addForeignKeyIfMissing(pool, "fk_players_account", "players", "FOREIGN KEY (account_id) REFERENCES accounts(id)");
+  await addForeignKeyIfMissing(pool, "fk_players_national_roster", "players", "FOREIGN KEY (account_id, national_roster_id) REFERENCES stored_rosters(account_id, id)");
+  await addForeignKeyIfMissing(pool, "fk_players_international_roster", "players", "FOREIGN KEY (account_id, international_roster_id) REFERENCES stored_rosters(account_id, id)");
   await addForeignKeyIfMissing(pool, "fk_player_stats_account", "player_stats", "FOREIGN KEY (account_id) REFERENCES accounts(id)");
   await addForeignKeyIfMissing(pool, "fk_player_stats_player", "player_stats", "FOREIGN KEY (account_id, player_id) REFERENCES players(account_id, id)");
   await addForeignKeyIfMissing(pool, "fk_titles_roster", "titles", "FOREIGN KEY (account_id, roster_id) REFERENCES stored_rosters(account_id, id)");
@@ -892,14 +899,19 @@ async function syncRosterDataToTables(
       );
 
       // 6. Insert players from this roster
+      const rosterScope = getCompetitionScope(r.category);
       for (const p of rPlayers) {
         if (!p.id || !p.name) continue;
+
+        const nationalRosterId = rosterScope === 'national' ? r.id : null;
+        const internationalRosterId = rosterScope === 'international' ? r.id : null;
 
         await client.query(
           `INSERT INTO players
            (id, account_id, name, number, positions, photo_url, nationality, club,
+            national_roster_id, international_roster_id,
             created_at, updated_at, last_modified_by)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,$10)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11,$12)
            ON CONFLICT (account_id, id) DO UPDATE SET
              name = EXCLUDED.name,
              number = EXCLUDED.number,
@@ -907,6 +919,8 @@ async function syncRosterDataToTables(
              photo_url = EXCLUDED.photo_url,
              nationality = EXCLUDED.nationality,
              club = COALESCE(EXCLUDED.club, players.club),
+             national_roster_id = COALESCE(EXCLUDED.national_roster_id, players.national_roster_id),
+             international_roster_id = COALESCE(EXCLUDED.international_roster_id, players.international_roster_id),
              updated_at = EXCLUDED.updated_at`,
           [
             p.id,
@@ -917,6 +931,8 @@ async function syncRosterDataToTables(
             p.photoUrl ?? null,
             p.nationality ?? null,
             p.club ?? r.name,
+            nationalRosterId,
+            internationalRosterId,
             nowIso,
             accountId,
           ]

@@ -8,7 +8,7 @@ function sortEntriesByNumber(entries: CompositionEntry[]): CompositionEntry[] {
 // Roster Operations
 export function createNewRoster(
     name: string,
-    category: 'Top 14' | 'Pro D2' | 'Women\'s Six Nations' | 'World Series',
+    category: 'Top 14' | 'Pro D2' | 'Elite 1' | 'Women\'s Six Nations' | 'World Series',
     nickname?: string,
     color?: string,
     logo?: string,
