@@ -6,7 +6,7 @@ import type { LiveSnapshot } from "~/types/live";
 import type { Roster, Team } from "~/types/tracker";
 import { getCompetitionScope, getCompetitionGender } from "~/types/tracker";
 import { rosterStatePayloadSchema } from "~/utils/schemas.server";
-import { ALL_CLUBS } from "~/utils/clubs";
+import { ALL_CLUBS, ELITE1_CLUBS_2025_2026 } from "~/utils/clubs";
 import { FRANCE_W6N_SQUAD_2025_2026 } from "~/utils/france-w6n-squad";
 
 type Sport = "Rugby" | "Football";
@@ -107,6 +107,8 @@ const ANONYMOUS_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 const SEED_TEST_ACCOUNT_ID = process.env.SEED_TEST_ACCOUNT_ID?.trim() || "";
 const SEED_TEST_ACCOUNT_NAME = process.env.SEED_TEST_ACCOUNT_NAME?.trim() || "Compte test";
 const SEED_TEST_ACCOUNT_ACCESS_CODE = process.env.SEED_TEST_ACCOUNT_ACCESS_CODE?.trim() || "";
+const SEED_ELITE1_ACCOUNT_NAME = process.env.SEED_ELITE1_ACCOUNT_NAME?.trim() || "";
+const SEED_ELITE1_SEASON = process.env.SEED_ELITE1_SEASON?.trim() || "2025/2026";
 
 const defaultRosterState: RosterStatePayload = {
   rosters: [],
@@ -730,6 +732,11 @@ async function initializeSchema(pool: Pool) {
       actor_account_id TEXT,
       match_id TEXT,
       payload JSONB NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS seed_runs (
+      seed_key TEXT PRIMARY KEY,
+      executed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
     -- Indexes for structured tables --
@@ -1393,7 +1400,12 @@ async function backfillStructuredTables(pool: Pool): Promise<void> {
 // Seed: default club rosters for a specific account
 // ---------------------------------------------------------------------------
 
-async function seedDefaultRostersForAccount(pool: Pool, accountId: string): Promise<void> {
+async function seedRostersSubsetForAccount(
+  pool: Pool,
+  accountId: string,
+  candidates: typeof ALL_CLUBS,
+  seedLabel: string
+): Promise<void> {
   const existing = await pool.query<{ name: string; category: string }>(
     `SELECT name, category FROM stored_rosters WHERE account_id = $1`,
     [accountId]
@@ -1402,12 +1414,12 @@ async function seedDefaultRostersForAccount(pool: Pool, accountId: string): Prom
     existing.rows.map((r) => `${r.name}||${r.category}`)
   );
 
-  const missing = ALL_CLUBS.filter(
+  const missing = candidates.filter(
     (c) => !existingKeys.has(`${c.name}||${c.category}`)
   );
   if (missing.length === 0) return;
 
-  console.log(`[seed] Account "${accountId}": adding ${missing.length} default club roster(s)…`);
+  console.log(`[seed] Account "${accountId}": adding ${missing.length} ${seedLabel} roster(s)…`);
 
   const currentPayload = await pool.query<{ payload: string }>(
     `SELECT payload FROM account_rosters_state WHERE account_id = $1`,
@@ -1449,6 +1461,47 @@ async function seedDefaultRostersForAccount(pool: Pool, accountId: string): Prom
     [accountId, JSON.stringify(payload), now]
   );
   await syncRosterDataToTables(pool, accountId, payload);
+}
+
+async function seedDefaultRostersForAccount(pool: Pool, accountId: string): Promise<void> {
+  await seedRostersSubsetForAccount(pool, accountId, ALL_CLUBS, "default club");
+}
+
+async function seedElite1ForNamedAccount(pool: Pool): Promise<void> {
+  if (!SEED_ELITE1_ACCOUNT_NAME) return;
+
+  const target = await pool.query<{ id: string }>(
+    `SELECT id FROM accounts WHERE LOWER(name) = LOWER($1) LIMIT 1`,
+    [SEED_ELITE1_ACCOUNT_NAME]
+  );
+  const accountId = target.rows[0]?.id;
+  if (!accountId) {
+    console.warn(`[seed] No account found with name "${SEED_ELITE1_ACCOUNT_NAME}"; skipping Elite 1 seed.`);
+    return;
+  }
+
+  const seedKey = `elite1:${SEED_ELITE1_SEASON}:${accountId}`;
+  const alreadySeeded = await pool.query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count FROM seed_runs WHERE seed_key = $1`,
+    [seedKey]
+  );
+  if (Number(alreadySeeded.rows[0]?.count ?? "0") > 0) {
+    return;
+  }
+
+  await seedRostersSubsetForAccount(
+    pool,
+    accountId,
+    ELITE1_CLUBS_2025_2026,
+    "Elite 1"
+  );
+
+  await pool.query(
+    `INSERT INTO seed_runs (seed_key, executed_at)
+     VALUES ($1, NOW())
+     ON CONFLICT (seed_key) DO NOTHING`,
+    [seedKey]
+  );
 }
 
 async function ensureTestAccount(pool: Pool): Promise<void> {
@@ -1710,6 +1763,7 @@ async function ensureInitialized() {
     await migrateStadeToulousainFeminin(pool);
     await seedDefaultRosters(pool);
     await ensureTestAccount(pool);
+    await seedElite1ForNamedAccount(pool);
     await seedFranceW6NPlayers(pool);
   })();
 
