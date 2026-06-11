@@ -1387,6 +1387,94 @@ async function ensureTestAccount(pool: Pool): Promise<void> {
 // Seed: default club rosters (Top 14 + Pro D2) for the legacy account
 // ---------------------------------------------------------------------------
 
+/**
+ * Migration : renomme "Stade Toulousain" → "Stade Toulousain Rugby Féminin"
+ * dans les rosters de catégorie Elite 1 (category = 'Elite 1').
+ * Fusionne les joueurs si les deux rosters coexistent dans un même compte.
+ */
+async function migrateStadeToulousainFeminin(pool: Pool): Promise<void> {
+  const OLD_NAME = "Stade Toulousain";
+  const NEW_NAME = "Stade Toulousain Rugby Féminin";
+
+  // Corriger dans stored_rosters (table structurée)
+  await pool.query(
+    `UPDATE stored_rosters SET name = $1
+     WHERE name = $2 AND category = 'Elite 1'
+       AND NOT EXISTS (
+         SELECT 1 FROM stored_rosters sr2
+         WHERE sr2.account_id = stored_rosters.account_id
+           AND sr2.name = $1
+           AND sr2.category = 'Elite 1'
+       )`,
+    [NEW_NAME, OLD_NAME]
+  );
+
+  // Corriger dans les payloads JSON (account_rosters_state)
+  const accounts = await pool.query<{ account_id: string; payload: string }>(
+    `SELECT account_id, payload FROM account_rosters_state
+     WHERE payload LIKE $1`,
+    [`%${OLD_NAME}%`]
+  );
+
+  for (const row of accounts.rows) {
+    const state = parseJsonOrNull<RosterStatePayload>(row.payload);
+    if (!state) continue;
+
+    let changed = false;
+
+    // Chercher le roster avec l'ancien nom ET un éventuel doublon avec le nouveau nom
+    const oldRoster = state.rosters.find(
+      (r) => r.name === OLD_NAME && r.category === "Elite 1"
+    );
+    const newRoster = state.rosters.find(
+      (r) => r.name === NEW_NAME && r.category === "Elite 1"
+    );
+
+    let updatedRosters = state.rosters;
+
+    if (oldRoster && newRoster) {
+      // Fusion : ajouter les joueurs de l'ancien roster vers le nouveau (sans doublon par id)
+      const existingIds = new Set(newRoster.players.map((p) => p.id));
+      const merged = {
+        ...newRoster,
+        players: [
+          ...newRoster.players,
+          ...oldRoster.players.filter((p) => !existingIds.has(p.id)),
+        ],
+      };
+      updatedRosters = state.rosters
+        .filter((r) => r.id !== oldRoster.id)
+        .map((r) => (r.id === newRoster.id ? merged : r));
+      console.log(
+        `[migrate] Fusion Stade Toulousain → Rugby Féminin pour le compte ${row.account_id} (${oldRoster.players.length} joueurs migrés)`
+      );
+      changed = true;
+    } else if (oldRoster) {
+      // Simple renommage
+      updatedRosters = state.rosters.map((r) =>
+        r.id === oldRoster.id ? { ...r, name: NEW_NAME } : r
+      );
+      changed = true;
+    }
+
+    if (!changed) continue;
+
+    const updatedState = { ...state, rosters: updatedRosters };
+    const now = new Date().toISOString();
+    await pool.query(
+      `UPDATE account_rosters_state SET payload = $2, updated_at = $3 WHERE account_id = $1`,
+      [row.account_id, JSON.stringify(updatedState), now]
+    );
+    await syncRosterDataToTables(pool, row.account_id, updatedState);
+  }
+
+  // Corriger le champ `club` des joueurs qui avaient l'ancien nom
+  await pool.query(
+    `UPDATE players SET club = $1 WHERE club = $2`,
+    [NEW_NAME, OLD_NAME]
+  );
+}
+
 async function seedDefaultRosters(pool: Pool): Promise<void> {
   const existing = await pool.query<{ name: string; category: string }>(
     `SELECT name, category FROM stored_rosters WHERE account_id = $1`,
@@ -1525,6 +1613,7 @@ async function ensureInitialized() {
     await initializeSchema(pool);
     await migrateFromJsonFiles(pool);
     await backfillStructuredTables(pool);
+    await migrateStadeToulousainFeminin(pool);
     await seedDefaultRosters(pool);
     await ensureTestAccount(pool);
     await seedFranceW6NPlayers(pool);

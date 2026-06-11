@@ -105,6 +105,24 @@ export default function RosterDetailPage() {
     const [editingPlayerClub, setEditingPlayerClub] = useState("");
     const [newPlayerInternationalRosterIds, setNewPlayerInternationalRosterIds] = useState<Set<string>>(new Set());
     const [editingPlayerInternationalRosterIds, setEditingPlayerInternationalRosterIds] = useState<Set<string>>(new Set());
+
+    // Détection de doublon — joueur existant en base avec le même nom
+    type ExistingPlayerCandidate = {
+        id: string;
+        name: string;
+        positions: string[];
+        photoUrl: string | null;
+        nationality: string | null;
+        club: string | null;
+        gender: string | null;
+        rosterIds: string[];
+    };
+    const [duplicateCandidate, setDuplicateCandidate] = useState<ExistingPlayerCandidate | null>(null);
+    // Données du formulaire en attente (en cas de doublon détecté)
+    const [pendingNewPlayer, setPendingNewPlayer] = useState<{
+        formattedFirst: string;
+        formattedLast: string;
+    } | null>(null);
     const [compositionEditTeamId, setCompositionEditTeamId] = useState<string | null>(null);
     const [selectedPlayerIds, setSelectedPlayerIds] = useState<Set<string>>(new Set());
     const [playerNumbers, setPlayerNumbers] = useState<Record<string, number>>({});
@@ -418,7 +436,20 @@ export default function RosterDetailPage() {
         setTeams(updateTeamInList(teams || [], updatedTeam));
     }
 
-    function addPlayerToRoster() {
+    /** Applique l'ajout d'un objet Player (nouveau ou existant) aux rosters concernés */
+    function applyPlayerToRosters(player: ReturnType<typeof createPlayerFromNames>) {
+        if (!roster) return;
+        const updatedRoster = addPlayerToRosterList(roster, player);
+        setRosters(rosters.map((r) => {
+            if (r.id === roster.id) return syncRosterCurrentSeason(updatedRoster);
+            if (!isInternational && newPlayerInternationalRosterIds.has(r.id) && !r.players.some(p => p.id === player.id)) {
+                return addPlayerToRosterList(r, player);
+            }
+            return r;
+        }));
+    }
+
+    async function addPlayerToRoster() {
         if (!roster) return;
         const formattedFirst = formatName(newPlayerFirst).trim();
         const formattedLast = formatName(newPlayerLast).trim();
@@ -429,6 +460,32 @@ export default function RosterDetailPage() {
         if (firstError || lastError) return;
         if (!newPlayerFirst && !newPlayerLast) return;
 
+        const fullName = `${formattedFirst} ${formattedLast}`.trim();
+
+        // Vérifier l'existence en base
+        try {
+            const res = await fetch(`/api/search?entity=players&q=${encodeURIComponent(fullName)}`);
+            if (res.ok) {
+                const data = await res.json() as { results: ExistingPlayerCandidate[] };
+                const exact = data.results.find(
+                    (p) => p.name.trim().toLowerCase() === fullName.toLowerCase()
+                );
+                if (exact && !roster.players.some((p) => p.id === exact.id)) {
+                    // Doublon détecté → ouvrir le modal
+                    setDuplicateCandidate(exact);
+                    setPendingNewPlayer({ formattedFirst, formattedLast });
+                    return;
+                }
+            }
+        } catch {
+            // Échec de la recherche → on continue la création normale
+        }
+
+        createAndAddNewPlayer(formattedFirst, formattedLast);
+    }
+
+    function createAndAddNewPlayer(formattedFirst: string, formattedLast: string) {
+        if (!roster) return;
         const player = createPlayerFromNames(
             formattedFirst,
             formattedLast,
@@ -437,17 +494,41 @@ export default function RosterDetailPage() {
             newPlayerNationality || undefined,
             isInternational ? (newPlayerClub || undefined) : roster.name
         );
-        const updatedRoster = addPlayerToRosterList(roster, player);
-
-        setRosters(rosters.map((r) => {
-            if (r.id === roster.id) return syncRosterCurrentSeason(updatedRoster);
-            if (!isInternational && newPlayerInternationalRosterIds.has(r.id) && !r.players.some(p => p.id === player.id)) {
-                return addPlayerToRosterList(r, player);
-            }
-            return r;
-        }));
+        applyPlayerToRosters(player);
         closeAddPlayerForm();
         setPlayerMessage("Joueur ajouté à l'effectif.");
+    }
+
+    function confirmUseExistingPlayer() {
+        if (!roster || !duplicateCandidate) return;
+        // Reconstruit un objet Player depuis le candidat existant (en réutilisant son ID)
+        const existing = duplicateCandidate;
+        const player: ReturnType<typeof createPlayerFromNames> = {
+            id: existing.id,
+            name: existing.name,
+            positions: (existing.positions ?? []) as PlayerPosition[],
+            photoUrl: existing.photoUrl ?? undefined,
+            nationality: existing.nationality ?? undefined,
+            club: existing.club ?? (isInternational ? (newPlayerClub || undefined) : roster.name),
+            gender: (existing.gender ?? undefined) as 'male' | 'female' | undefined,
+        };
+        applyPlayerToRosters(player);
+        setDuplicateCandidate(null);
+        setPendingNewPlayer(null);
+        closeAddPlayerForm();
+        setPlayerMessage("Joueur existant ajouté à l'effectif.");
+    }
+
+    function confirmCreateNewPlayer() {
+        if (!pendingNewPlayer) return;
+        setDuplicateCandidate(null);
+        setPendingNewPlayer(null);
+        createAndAddNewPlayer(pendingNewPlayer.formattedFirst, pendingNewPlayer.formattedLast);
+    }
+
+    function dismissDuplicateModal() {
+        setDuplicateCandidate(null);
+        setPendingNewPlayer(null);
     }
 
     function closeAddPlayerForm() {
@@ -1244,6 +1325,62 @@ export default function RosterDetailPage() {
                     </p>
                 )}
             </section>
+
+            {/* Modal doublon — joueur existant détecté */}
+            {duplicateCandidate && (
+                <div
+                    className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 px-4"
+                    onClick={dismissDuplicateModal}
+                >
+                    <div
+                        className="w-full max-w-md flex flex-col gap-4 rounded-md border border-amber-600 bg-neutral-900 px-4 py-4"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <h3 className="font-semibold text-amber-300">Joueur déjà enregistré</h3>
+                        <p className="text-sm text-neutral-300">
+                            Un joueur nommé <strong className="text-white">{duplicateCandidate.name}</strong> existe déjà dans le registre.
+                        </p>
+                        <div className="rounded border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm space-y-1">
+                            {duplicateCandidate.positions.length > 0 && (
+                                <p className="text-neutral-400">Postes : {duplicateCandidate.positions.join(" / ")}</p>
+                            )}
+                            {duplicateCandidate.nationality && (
+                                <p className="text-neutral-400">
+                                    Nationalité :&nbsp;
+                                    <img src={getFlagUrl(duplicateCandidate.nationality)} alt={duplicateCandidate.nationality} className="inline h-3 mr-1" />
+                                    {duplicateCandidate.nationality}
+                                </p>
+                            )}
+                            {duplicateCandidate.club && (
+                                <p className="text-neutral-400">Club : {duplicateCandidate.club}</p>
+                            )}
+                        </div>
+                        <p className="text-sm text-neutral-400">
+                            Souhaitez-vous ajouter ce joueur existant à l'effectif <strong className="text-white">{roster.name}</strong>, ou créer un nouveau profil distinct ?
+                        </p>
+                        <div className="flex flex-wrap gap-2 justify-end">
+                            <button
+                                className="sp-button sp-button-sm sp-button-blue"
+                                onClick={confirmUseExistingPlayer}
+                            >
+                                Utiliser le joueur existant
+                            </button>
+                            <button
+                                className="sp-button sp-button-sm sp-button-light"
+                                onClick={confirmCreateNewPlayer}
+                            >
+                                Créer un nouveau profil
+                            </button>
+                            <button
+                                className="sp-button sp-button-sm sp-button-neutral"
+                                onClick={dismissDuplicateModal}
+                            >
+                                Annuler
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </main>
     );
 }

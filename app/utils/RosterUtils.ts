@@ -70,7 +70,14 @@ export function deletePlayerFromRoster(roster: Roster, playerId: string): Roster
 export function updatePlayerInRoster(
     roster: Roster,
     playerId: string,
-    updates: { name: string; positions?: PlayerPosition[]; photoUrl?: string; nationality?: string; club?: string }
+    updates: {
+        name: string;
+        positions?: PlayerPosition[];
+        photoUrl?: string;
+        nationality?: string;
+        club?: string;
+        nationalRosterId?: string;
+    }
 ): Roster {
     return {
         ...roster,

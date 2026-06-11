@@ -11,7 +11,7 @@ export interface ClubInfo {
 
 /** Classement Top 14 — saison 2025/2026 (source : L'Équipe, 10 juin 2026) */
 export const TOP14_CLUBS_2025_2026: ClubInfo[] = [
-  { name: "Stade Toulousain",     nickname: "TLS",  color: "#B3151B", category: "Top 14", currentRanking: 1,  currentPoints: 86 },
+  { name: "Stade Toulousain Rugby Féminin",     nickname: "TLS",  color: "#B3151B", category: "Top 14", currentRanking: 1,  currentPoints: 86 },
   { name: "Montpellier HR",       nickname: "MHR",  color: "#001F5B", category: "Top 14", currentRanking: 2,  currentPoints: 82 },
   { name: "Stade Français Paris", nickname: "SFP",  color: "#E63946", category: "Top 14", currentRanking: 3,  currentPoints: 79 },
   { name: "Section Paloise",      nickname: "PAU",  color: "#007F3B", category: "Top 14", currentRanking: 4,  currentPoints: 78 },

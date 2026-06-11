@@ -1,4 +1,4 @@
-import { Link, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import type { Route } from "./+types/player-profile";
 import { useEffect, useMemo, useState } from "react";
 import { useTeams } from "~/context/TeamsContext";
@@ -9,7 +9,7 @@ import { getFlagUrl, getCountryByCode } from "~/utils/countries";
 import type { PlayerStats } from "~/types/tracker";
 import { getCompetitionGender, getCompetitionScope } from "~/types/tracker";
 import { TOP14_CLUBS_2025_2026, PROD2_CLUBS_2025_2026, ELITE1_CLUBS_2025_2026 } from "~/utils/clubs";
-import { updatePlayerInRoster, addPlayerToRosterList } from "~/utils/RosterUtils";
+import { updatePlayerInRoster, addPlayerToRosterList, deletePlayerFromRoster, deletePlayerFromTeamData } from "~/utils/RosterUtils";
 
 function sanitizeStat(value: unknown): number {
   const n = Number(value);
@@ -51,13 +51,24 @@ function getRosterBackPath(rosterId: string | null | undefined): string {
 function normalizeClubEntityName(name: string | null | undefined): string {
   const value = (name ?? "").trim();
   if (!value) return "";
-  if (value === "Stade Toulousain Rugby Féminin") return "Stade Toulousain";
+  // Rétro-compatibilité : ancienne valeur persistée sans le suffixe officiel
+  if (value === "Stade Toulousain") return "Stade Toulousain Rugby Féminin";
   return value;
 }
 
+function resolveRosterGender(roster: { category?: string; gender?: "male" | "female" }): "masculine" | "feminine" | "mixed" {
+  if (!roster.category) return "mixed";
+  const competitionGender = getCompetitionGender(roster.category);
+  if (competitionGender !== "mixed") return competitionGender;
+  if (roster.gender === "female") return "feminine";
+  if (roster.gender === "male") return "masculine";
+  return "mixed";
+}
+
 export default function PlayerProfilePage() {
+  const navigate = useNavigate();
   const { rosterId: shortRosterId, playerId: shortPlayerId } = useParams();
-  const { rosters, teams, setRosters } = useTeams();
+  const { rosters, teams, setRosters, setTeams } = useTeams();
   
   // Convert short IDs to full IDs
   const rosterId = useMemo(
@@ -153,7 +164,7 @@ export default function PlayerProfilePage() {
   }
 
   const isInternational = getCompetitionScope(roster?.category) === 'international';
-  const rosterGender = roster ? getCompetitionGender(roster.category) : 'masculine';
+  const rosterGender = roster ? resolveRosterGender(roster) : 'masculine';
 
   // National rosters compatible with this player's gender (for club selector)
   const nationalClubRosters = useMemo(() => {
@@ -162,7 +173,7 @@ export default function PlayerProfilePage() {
       r.id !== roster.id &&
       r.category &&
       getCompetitionScope(r.category) === 'national' &&
-      (getCompetitionGender(r.category) === 'mixed' || getCompetitionGender(r.category) === rosterGender)
+      (resolveRosterGender(r) === 'mixed' || resolveRosterGender(r) === rosterGender)
     ).sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
   }, [rosters, roster, rosterGender]);
 
@@ -179,7 +190,7 @@ export default function PlayerProfilePage() {
         normalizeClubEntityName(r.name) === club &&
         r.id !== rosterId &&
         getCompetitionScope(r.category) === 'national' &&
-        (getCompetitionGender(r.category) === rosterGender || getCompetitionGender(r.category) === 'mixed')
+        (resolveRosterGender(r) === rosterGender || resolveRosterGender(r) === 'mixed')
       ) ?? null;
     }
     return null;
@@ -189,11 +200,37 @@ export default function PlayerProfilePage() {
     ? clubLinkedNationalRoster.players.some((p) => p.id === player?.id)
     : false;
 
+  const nationalRostersForPlayer = useMemo(() => {
+    if (!player) return [];
+    return rosters
+      .filter(
+        (r) =>
+          r.category &&
+          getCompetitionScope(r.category) === "national" &&
+          r.players.some((p) => p.id === player.id),
+      )
+      .sort((a, b) => a.name.localeCompare(b.name, "fr", { sensitivity: "base" }));
+  }, [rosters, player]);
+
   function syncToClubRoster() {
     if (!player || !clubLinkedNationalRoster || isAlreadyInClubRoster) return;
     const updatedRoster = addPlayerToRosterList(clubLinkedNationalRoster, { ...player });
     setRosters((prev) => prev.map((r) => r.id === updatedRoster.id ? updatedRoster : r));
     setNationalRosterMessage(`${player.name} ajouté·e à ${clubLinkedNationalRoster.name}.`);
+  }
+
+  // Tous les effectifs internationaux auxquels appartient ce joueur
+  const internationalRostersForPlayer = useMemo(() => {
+    if (!player) return [];
+    return rosters.filter((r) =>
+      r.category &&
+      getCompetitionScope(r.category) === 'international' &&
+      r.players.some((p) => p.id === player.id)
+    ).sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
+  }, [rosters, player]);
+
+  function formatRosterLabel(r: typeof rosters[number]): string {
+    return r.category === 'World Series' ? `${r.name} 7` : r.name;
   }
 
   const availableInternationalRosters = useMemo(() => {
@@ -202,7 +239,7 @@ export default function PlayerProfilePage() {
       r.id !== rosterId &&
       r.category &&
       getCompetitionScope(r.category) === 'international' &&
-      (getCompetitionGender(r.category) === 'mixed' || getCompetitionGender(r.category) === rosterGender) &&
+      (resolveRosterGender(r) === 'mixed' || resolveRosterGender(r) === rosterGender) &&
       !r.players.some((p) => p.id === player.id)
     ).sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
   }, [rosters, player, rosterId, rosterGender, isInternational]);
@@ -217,15 +254,67 @@ export default function PlayerProfilePage() {
     setNationalRosterMessage(`${player.name} ajouté·e à ${targetRoster.name}.`);
   }
 
+  function removeFromRoster(targetRosterId: string) {
+    if (!player) return;
+    const targetRoster = rosters.find((r) => r.id === targetRosterId);
+    if (!targetRoster) return;
+
+    const confirmed = window.confirm(
+      `Retirer ${player.name} de l'effectif \"${targetRoster.name}\" ?`,
+    );
+    if (!confirmed) return;
+
+    const updatedTargetRoster = deletePlayerFromRoster(targetRoster, player.id);
+    const updatedRosters = rosters.map((r) =>
+      r.id === targetRoster.id ? updatedTargetRoster : r,
+    );
+    const updatedTeams = teams.map((team) =>
+      team.rosterId === targetRoster.id
+        ? deletePlayerFromTeamData(team, player.id)
+        : team,
+    );
+
+    setRosters(updatedRosters);
+    setTeams(updatedTeams);
+    setInfoMessage("");
+    setNationalRosterMessage(`${player.name} retiré·e de ${targetRoster.name}.`);
+
+    if (targetRoster.id === roster?.id) {
+      navigate(getRosterBackPath(toShortId(targetRoster.id)));
+    }
+  }
+
   function saveInfo() {
     if (!roster || !player) return;
     const normalizedClubName = normalizeClubEntityName(infoClubDraft) || undefined;
+    const selectedNationalRoster =
+      isInternational && infoClubRosterId
+        ? rosters.find(
+            (r) =>
+              r.id === infoClubRosterId &&
+              r.category &&
+              getCompetitionScope(r.category) === "national",
+          )
+        : null;
+    const inferredNationalRoster =
+      isInternational && normalizedClubName
+        ? rosters.find(
+            (r) =>
+              r.category &&
+              getCompetitionScope(r.category) === "national" &&
+              normalizeClubEntityName(r.name) === normalizedClubName &&
+              (resolveRosterGender(r) === rosterGender || resolveRosterGender(r) === "mixed"),
+          )
+        : null;
+    const resolvedNationalRosterId =
+      (selectedNationalRoster?.id ?? inferredNationalRoster?.id) || undefined;
     const updatedRoster = updatePlayerInRoster(roster, player.id, {
       name: player.name,
       positions: player.positions,
       photoUrl: player.photoUrl,
       nationality: player.nationality,
       club: normalizedClubName,
+      nationalRosterId: resolvedNationalRosterId,
     });
     const playerWithClub = updatedRoster.players.find(p => p.id === player.id);
     const newClub = normalizeClubEntityName(infoClubDraft);
@@ -235,7 +324,7 @@ export default function PlayerProfilePage() {
           r.id !== roster.id &&
           normalizeClubEntityName(r.name) === newClub &&
           getCompetitionScope(r.category) === 'national' &&
-          (getCompetitionGender(r.category) === rosterGender || getCompetitionGender(r.category) === 'mixed') &&
+          (resolveRosterGender(r) === rosterGender || resolveRosterGender(r) === 'mixed') &&
           !r.players.some((p) => p.id === player.id)
         )
       : null;
@@ -273,7 +362,7 @@ export default function PlayerProfilePage() {
         <h1 className="text-2xl font-bold">{player.name}</h1>
         <p className="text-sm text-neutral-400">Effectif: {roster.name}</p>
         <Link to={backPath} className="sp-link-muted">
-        <FontAwesomeIcon icon={faArrowLeft} className="text-xs mr-1" />
+          <FontAwesomeIcon icon={faArrowLeft} className="text-xs mr-1" />
           Retour à l'effectif
         </Link>
       </div>
@@ -289,7 +378,9 @@ export default function PlayerProfilePage() {
                 onClick={() => {
                   // Pre-select the current club roster if one matches
                   const currentClubRoster = nationalClubRosters.find(
-                    (r) => normalizeClubEntityName(r.name) === normalizeClubEntityName(player.club)
+                    (r) =>
+                      normalizeClubEntityName(r.name) ===
+                      normalizeClubEntityName(player.club),
                   );
                   setInfoClubRosterId(currentClubRoster?.id ?? "");
                   setInfoClubDraft(normalizeClubEntityName(player.club));
@@ -302,7 +393,11 @@ export default function PlayerProfilePage() {
               </button>
             ) : (
               <div className="flex items-center gap-2">
-                <button type="button" className="sp-button sp-button-xs sp-button-blue" onClick={saveInfo}>
+                <button
+                  type="button"
+                  className="sp-button sp-button-xs sp-button-blue"
+                  onClick={saveInfo}
+                >
                   Enregistrer
                 </button>
                 <button
@@ -315,50 +410,174 @@ export default function PlayerProfilePage() {
               </div>
             )}
           </div>
-          {infoMessage && <p className="text-xs text-emerald-400">{infoMessage}</p>}
-          {isInternational && (
-            <div className="space-y-1">
-              <p className="text-sm font-semibold text-neutral-300">Sélection :</p>
-              <p className="text-sm text-neutral-200">{roster.name}</p>
+          {infoMessage && (
+            <p className="text-xs text-emerald-400">{infoMessage}</p>
+          )}
+          {internationalRostersForPlayer.length > 0 && (
+            <p className="text-sm text-neutral-200">
+              <strong>
+                Sélection{internationalRostersForPlayer.length > 1 ? "s" : ""} :
+              </strong>
+              {internationalRostersForPlayer.map((r, i) => (
+                <span key={r.id} className="text-sm text-neutral-200">
+                  {i > 0 ? ", " : " "}{formatRosterLabel(r)}
+                </span>
+              ))}
+            </p>
+          )}
+          {isEditingInfo && (nationalRostersForPlayer.length > 0 || internationalRostersForPlayer.length > 0) && (
+            <div className="space-y-3 rounded border border-neutral-700 bg-neutral-900/40 p-3">
+              <h3 className="text-sm font-semibold text-neutral-200">
+                Gérer les effectifs
+              </h3>
+              {!isInternational && availableInternationalRosters.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm text-neutral-200">
+                    <strong>Ajouter à une sélection internationale :</strong>
+                  </p>
+                  <div className="flex items-end gap-2 flex-wrap">
+                    <div className="sp-input-shell flex-1 min-w-[12rem]">
+                      <label className="sp-input-label" htmlFor="nationalRosterSelectInline">
+                        Sélection
+                      </label>
+                      <select
+                        id="nationalRosterSelectInline"
+                        className="sp-input-control"
+                        value={selectedNationalRosterId}
+                        onChange={(e) => {
+                          setSelectedNationalRosterId(e.target.value);
+                          setNationalRosterMessage("");
+                        }}
+                      >
+                        <option value="">— Choisir une sélection —</option>
+                        {availableInternationalRosters.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.name}
+                            {r.category ? ` (${r.category})` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <button
+                      type="button"
+                      className="sp-button sp-button-sm sp-button-blue"
+                      disabled={!selectedNationalRosterId}
+                      onClick={addToInternationalRoster}
+                    >
+                      Ajouter
+                    </button>
+                  </div>
+                </div>
+              )}
+              {isInternational && clubLinkedNationalRoster && !isAlreadyInClubRoster && (
+                <div className="space-y-2">
+                  <p className="text-sm text-neutral-200">
+                    <strong>Effectif national lié :</strong> {clubLinkedNationalRoster.name}
+                  </p>
+                  <button
+                    type="button"
+                    className="sp-button sp-button-sm sp-button-blue"
+                    onClick={syncToClubRoster}
+                  >
+                    Ajouter à {clubLinkedNationalRoster.name}
+                  </button>
+                </div>
+              )}
+              {nationalRostersForPlayer.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs uppercase tracking-wide text-neutral-400">
+                    Effectif{nationalRostersForPlayer.length > 1 ? "s" : ""} nationa{nationalRostersForPlayer.length > 1 ? "ux" : "l"}
+                  </p>
+                  <div className="space-y-2">
+                    {nationalRostersForPlayer.map((linkedRoster) => (
+                      <div
+                        key={linkedRoster.id}
+                        className="flex items-center justify-between gap-3 rounded border border-neutral-800 bg-neutral-950/40 px-3 py-2"
+                      >
+                        <span className="text-sm text-neutral-200">{linkedRoster.name}</span>
+                        <button
+                          type="button"
+                          className="sp-button sp-button-xs sp-button-light"
+                          onClick={() => removeFromRoster(linkedRoster.id)}
+                        >
+                          Retirer
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {internationalRostersForPlayer.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs uppercase tracking-wide text-neutral-400">
+                    Sélection{internationalRostersForPlayer.length > 1 ? "s" : ""} internationale{internationalRostersForPlayer.length > 1 ? "s" : ""}
+                  </p>
+                  <div className="space-y-2">
+                    {internationalRostersForPlayer.map((linkedRoster) => (
+                      <div
+                        key={linkedRoster.id}
+                        className="flex items-center justify-between gap-3 rounded border border-neutral-800 bg-neutral-950/40 px-3 py-2"
+                      >
+                        <span className="text-sm text-neutral-200">{formatRosterLabel(linkedRoster)}</span>
+                        <button
+                          type="button"
+                          className="sp-button sp-button-xs sp-button-light"
+                          onClick={() => removeFromRoster(linkedRoster.id)}
+                        >
+                          Retirer
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
           <p className="text-sm text-neutral-200">
-            <strong>Postes:</strong>{" "}
+            <strong>Poste{player.positions && player.positions.length > 1 ? "s" : ""} :</strong>{" "}
             {player.positions && player.positions.length > 0
               ? player.positions.join(" / ")
               : "Non renseignés"}
           </p>
-          {player.nationality && (() => {
-            const country = getCountryByCode(player.nationality);
-            return (
-              <p className="text-sm text-neutral-200 flex items-center gap-1.5">
-                <strong>Nationalité:</strong>
-                <img
-                  src={getFlagUrl(player.nationality)}
-                  alt={country?.name ?? player.nationality}
-                  width={16}
-                  height={12}
-                  className="inline-block"
-                />
-                {country?.name ?? player.nationality}
-              </p>
-            );
-          })()}
-          <div className="space-y-1">
-            <p className="text-sm font-semibold text-neutral-300">Club :</p>
+          {player.nationality &&
+            (() => {
+              const country = getCountryByCode(player.nationality);
+              return (
+                <p className="text-sm text-neutral-200 flex items-center gap-1.5">
+                  <strong>Nationalité:</strong>
+                  <img
+                    src={getFlagUrl(player.nationality)}
+                    alt={country?.name ?? player.nationality}
+                    width={16}
+                    height={12}
+                    className="inline-block"
+                  />
+                  {country?.name ?? player.nationality}
+                </p>
+              );
+            })()}
+          <p className="text-sm text-neutral-200">
+            <strong>Club : </strong>
             {isEditingInfo && isInternational ? (
               <select
                 className="sp-input-control"
                 value={infoClubRosterId}
                 onChange={(e) => {
                   setInfoClubRosterId(e.target.value);
-                  const r = nationalClubRosters.find(r => r.id === e.target.value);
+                  const r = nationalClubRosters.find(
+                    (r) => r.id === e.target.value,
+                  );
                   setInfoClubDraft(r?.name ?? "");
                 }}
               >
                 <option value="">— Non renseigné —</option>
                 {nationalClubRosters.map((r) => (
-                  <option key={r.id} value={r.id}>{r.name}{r.category && r.category !== roster.category ? ` (${r.category})` : ""}</option>
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                    {r.category && r.category !== roster.category
+                      ? ` (${r.category})`
+                      : ""}
+                  </option>
                 ))}
               </select>
             ) : isEditingInfo ? (
@@ -369,13 +588,15 @@ export default function PlayerProfilePage() {
                 placeholder="Nom du club"
               />
             ) : (
-              <p className="text-sm text-neutral-200">
-                {player.club
-                  ? normalizeClubEntityName(player.club)
-                  : <span className="text-neutral-500 italic">Non renseigné</span>}
-              </p>
+              <span>
+                {player.club ? (
+                  normalizeClubEntityName(player.club)
+                ) : (
+                  <span className="text-neutral-500 italic">Non renseigné</span>
+                )}
+              </span>
             )}
-          </div>
+          </p>
         </section>
 
         {player.photoUrl && (
@@ -388,65 +609,6 @@ export default function PlayerProfilePage() {
           </aside>
         )}
       </div>
-
-      {isInternational && clubLinkedNationalRoster && !isAlreadyInClubRoster && (
-        <section className="sp-panel space-y-3 border-amber-700/50">
-          <h2 className="font-semibold text-amber-300">Synchronisation effectif club</h2>
-          <p className="text-sm text-neutral-300">
-            Le club <strong>{normalizeClubEntityName(player.club)}</strong> est renseigné mais{" "}
-            <strong>{player.name}</strong> ne figure pas encore dans l&apos;effectif{" "}
-            <strong>{clubLinkedNationalRoster.name}</strong>.
-          </p>
-          {nationalRosterMessage && (
-            <p className="text-xs text-emerald-400">{nationalRosterMessage}</p>
-          )}
-          <button
-            type="button"
-            className="sp-button sp-button-sm sp-button-blue"
-            onClick={syncToClubRoster}
-          >
-            Ajouter à {clubLinkedNationalRoster.name}
-          </button>
-        </section>
-      )}
-
-      {!isInternational && availableInternationalRosters.length > 0 && (
-        <section className="sp-panel space-y-3">
-          <h2 className="font-semibold">Ajouter à une sélection internationale</h2>
-          {nationalRosterMessage && (
-            <p className="text-xs text-emerald-400">{nationalRosterMessage}</p>
-          )}
-          <div className="flex items-end gap-2 flex-wrap">
-            <div className="sp-input-shell flex-1 min-w-[12rem]">
-              <label className="sp-input-label" htmlFor="nationalRosterSelect">Sélection</label>
-              <select
-                id="nationalRosterSelect"
-                className="sp-input-control"
-                value={selectedNationalRosterId}
-                onChange={(e) => {
-                  setSelectedNationalRosterId(e.target.value);
-                  setNationalRosterMessage("");
-                }}
-              >
-                <option value="">— Choisir une sélection —</option>
-                {availableInternationalRosters.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}{r.category ? ` (${r.category})` : ""}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <button
-              type="button"
-              className="sp-button sp-button-sm sp-button-blue"
-              disabled={!selectedNationalRosterId}
-              onClick={addToInternationalRoster}
-            >
-              Ajouter
-            </button>
-          </div>
-        </section>
-      )}
 
       <section className="sp-panel space-y-3">
         <div className="flex items-center justify-between gap-2">
@@ -465,7 +627,11 @@ export default function PlayerProfilePage() {
             </button>
           ) : (
             <div className="flex items-center gap-2">
-              <button type="button" className="sp-button sp-button-xs sp-button-blue" onClick={saveStats}>
+              <button
+                type="button"
+                className="sp-button sp-button-xs sp-button-blue"
+                onClick={saveStats}
+              >
                 Enregistrer
               </button>
               <button
@@ -481,121 +647,179 @@ export default function PlayerProfilePage() {
             </div>
           )}
         </div>
-        {statsMessage && <p className="text-xs text-emerald-400">{statsMessage}</p>}
+        {statsMessage && (
+          <p className="text-xs text-emerald-400">{statsMessage}</p>
+        )}
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <div className="sp-input-shell">
-            <label className="sp-input-label" htmlFor="playerStatsPoints">Points</label>
+            <label className="sp-input-label" htmlFor="playerStatsPoints">
+              Points
+            </label>
             <input
               id="playerStatsPoints"
               type="number"
               min={0}
               className="sp-input-control"
               value={isEditingStats ? statsDraft.points : effectiveStats.points}
-              onChange={(event) => updateDraftNumber("points", event.target.value)}
+              onChange={(event) =>
+                updateDraftNumber("points", event.target.value)
+              }
               disabled={!isEditingStats}
             />
           </div>
           <div className="sp-input-shell">
-            <label className="sp-input-label" htmlFor="playerStatsEssais">Essais</label>
+            <label className="sp-input-label" htmlFor="playerStatsEssais">
+              Essais
+            </label>
             <input
               id="playerStatsEssais"
               type="number"
               min={0}
               className="sp-input-control"
               value={isEditingStats ? statsDraft.essais : effectiveStats.essais}
-              onChange={(event) => updateDraftNumber("essais", event.target.value)}
+              onChange={(event) =>
+                updateDraftNumber("essais", event.target.value)
+              }
               disabled={!isEditingStats}
             />
           </div>
           <div className="sp-input-shell">
-            <label className="sp-input-label" htmlFor="playerStatsPied">Pied</label>
+            <label className="sp-input-label" htmlFor="playerStatsPied">
+              Pied
+            </label>
             <input
               id="playerStatsPied"
               type="number"
               min={0}
               className="sp-input-control"
               value={isEditingStats ? statsDraft.pied : effectiveStats.pied}
-              onChange={(event) => updateDraftNumber("pied", event.target.value)}
+              onChange={(event) =>
+                updateDraftNumber("pied", event.target.value)
+              }
               disabled={!isEditingStats}
             />
           </div>
           <div className="sp-input-shell">
-            <label className="sp-input-label" htmlFor="playerStatsTauxTransfo">Taux de transfo (%)</label>
+            <label className="sp-input-label" htmlFor="playerStatsTauxTransfo">
+              Taux de transfo (%)
+            </label>
             <input
               id="playerStatsTauxTransfo"
               type="number"
               min={0}
               max={100}
               className="sp-input-control"
-              value={isEditingStats ? statsDraft.tauxTransfo : effectiveStats.tauxTransfo}
-              onChange={(event) => updateDraftNumber("tauxTransfo", event.target.value)}
+              value={
+                isEditingStats
+                  ? statsDraft.tauxTransfo
+                  : effectiveStats.tauxTransfo
+              }
+              onChange={(event) =>
+                updateDraftNumber("tauxTransfo", event.target.value)
+              }
               disabled={!isEditingStats}
             />
           </div>
           <div className="sp-input-shell">
-            <label className="sp-input-label" htmlFor="playerStatsCartons">Cartons</label>
+            <label className="sp-input-label" htmlFor="playerStatsCartons">
+              Cartons
+            </label>
             <input
               id="playerStatsCartons"
               type="number"
               min={0}
               className="sp-input-control"
-              value={isEditingStats ? statsDraft.cartons : effectiveStats.cartons}
-              onChange={(event) => updateDraftNumber("cartons", event.target.value)}
+              value={
+                isEditingStats ? statsDraft.cartons : effectiveStats.cartons
+              }
+              onChange={(event) =>
+                updateDraftNumber("cartons", event.target.value)
+              }
               disabled={!isEditingStats}
             />
           </div>
           <div className="sp-input-shell">
-            <label className="sp-input-label" htmlFor="playerStatsDrops">Drops</label>
+            <label className="sp-input-label" htmlFor="playerStatsDrops">
+              Drops
+            </label>
             <input
               id="playerStatsDrops"
               type="number"
               min={0}
               className="sp-input-control"
               value={isEditingStats ? statsDraft.drops : effectiveStats.drops}
-              onChange={(event) => updateDraftNumber("drops", event.target.value)}
+              onChange={(event) =>
+                updateDraftNumber("drops", event.target.value)
+              }
               disabled={!isEditingStats}
             />
           </div>
           <div className="sp-input-shell">
-            <label className="sp-input-label" htmlFor="playerStatsMatchs2526">Matchs 25-26</label>
+            <label className="sp-input-label" htmlFor="playerStatsMatchs2526">
+              Matchs 25-26
+            </label>
             <input
               id="playerStatsMatchs2526"
               type="number"
               min={0}
               className="sp-input-control"
-              value={isEditingStats ? statsDraft.matchs2526 : effectiveStats.matchs2526}
-              onChange={(event) => updateDraftNumber("matchs2526", event.target.value)}
+              value={
+                isEditingStats
+                  ? statsDraft.matchs2526
+                  : effectiveStats.matchs2526
+              }
+              onChange={(event) =>
+                updateDraftNumber("matchs2526", event.target.value)
+              }
               disabled={!isEditingStats}
             />
           </div>
           <div className="sp-input-shell">
-            <label className="sp-input-label" htmlFor="playerStatsTitularisations2526">Titularisations 25-26</label>
+            <label
+              className="sp-input-label"
+              htmlFor="playerStatsTitularisations2526"
+            >
+              Titularisations 25-26
+            </label>
             <input
               id="playerStatsTitularisations2526"
               type="number"
               min={0}
               className="sp-input-control"
-              value={isEditingStats ? statsDraft.titularisations2526 : effectiveStats.titularisations2526}
-              onChange={(event) => updateDraftNumber("titularisations2526", event.target.value)}
+              value={
+                isEditingStats
+                  ? statsDraft.titularisations2526
+                  : effectiveStats.titularisations2526
+              }
+              onChange={(event) =>
+                updateDraftNumber("titularisations2526", event.target.value)
+              }
               disabled={!isEditingStats}
             />
           </div>
         </div>
         <p className="text-xs text-neutral-500">
-          Valeur initiale automatique: Matchs 25-26 et Titularisations 25-26 sont préremplis depuis les compositions, puis restent modifiables manuellement.
+          Valeur initiale automatique: Matchs 25-26 et Titularisations 25-26
+          sont préremplis depuis les compositions, puis restent modifiables
+          manuellement.
         </p>
       </section>
 
       <section className="sp-panel space-y-3">
         <h2 className="font-semibold">Compositions</h2>
         {playerCompositions.length === 0 ? (
-          <p className="text-sm text-neutral-400">Aucune composition pour ce joueur.</p>
+          <p className="text-sm text-neutral-400">
+            Aucune composition pour ce joueur.
+          </p>
         ) : (
           <ul
             className={`space-y-2 ${playerCompositions.length > 4 ? "max-h-56 overflow-y-auto pr-1" : ""}`}
           >
             {playerCompositions.map((entry) => (
-              <li key={`${entry.teamId}-${entry.number}`} className="rounded border border-neutral-700 bg-neutral-800/40 px-3 py-2 text-sm text-neutral-200">
+              <li
+                key={`${entry.teamId}-${entry.number}`}
+                className="rounded border border-neutral-700 bg-neutral-800/40 px-3 py-2 text-sm text-neutral-200"
+              >
                 {entry.teamName} - #{entry.number}
                 {entry.isCaptain ? " (Capitaine)" : ""}
               </li>
