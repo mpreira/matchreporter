@@ -519,23 +519,44 @@ export default function RosterDetailPage() {
 
         const fullName = `${formattedFirst} ${formattedLast}`.trim();
 
-        // Vérifier l'existence en base
-        try {
-            const res = await fetch(`/api/search?entity=players&q=${encodeURIComponent(fullName)}`);
-            if (res.ok) {
-                const data = await res.json() as { results: ExistingPlayerCandidate[] };
-                const exact = data.results.find(
-                    (p) => p.name.trim().toLowerCase() === fullName.toLowerCase()
-                );
-                if (exact && !roster.players.some((p) => p.id === exact.id)) {
-                    // Doublon détecté → ouvrir le modal
-                    setDuplicateCandidate(exact);
-                    setPendingNewPlayer({ formattedFirst, formattedLast });
-                    return;
+        // Vérifier l'existence uniquement dans les données du compte connecté
+        const targetName = fullName.toLowerCase();
+        const candidatesById = new Map<string, ExistingPlayerCandidate>();
+
+        for (const r of rosters) {
+            for (const p of r.players) {
+                const existing = candidatesById.get(p.id);
+                if (!existing) {
+                    candidatesById.set(p.id, {
+                        id: p.id,
+                        name: p.name,
+                        positions: p.positions ?? [],
+                        photoUrl: p.photoUrl ?? null,
+                        nationality: p.nationality ?? null,
+                        club: p.club ?? null,
+                        gender: p.gender ?? null,
+                        rosterIds: [r.id],
+                    });
+                    continue;
                 }
+                if (!existing.rosterIds.includes(r.id)) {
+                    existing.rosterIds.push(r.id);
+                }
+                if (!existing.photoUrl && p.photoUrl) existing.photoUrl = p.photoUrl;
+                if (!existing.nationality && p.nationality) existing.nationality = p.nationality;
+                if (!existing.club && p.club) existing.club = p.club;
+                if (!existing.gender && p.gender) existing.gender = p.gender;
             }
-        } catch {
-            // Échec de la recherche → on continue la création normale
+        }
+
+        const exact = Array.from(candidatesById.values()).find(
+            (p) => p.name.trim().toLowerCase() === targetName
+        );
+        if (exact && !roster.players.some((p) => p.id === exact.id)) {
+            // Doublon détecté → ouvrir le modal
+            setDuplicateCandidate(exact);
+            setPendingNewPlayer({ formattedFirst, formattedLast });
+            return;
         }
 
         createAndAddNewPlayer(formattedFirst, formattedLast);
@@ -560,13 +581,16 @@ export default function RosterDetailPage() {
         if (!roster || !duplicateCandidate) return;
         // Reconstruit un objet Player depuis le candidat existant (en réutilisant son ID)
         const existing = duplicateCandidate;
+        const resolvedClub = isInternational
+            ? (newPlayerClub || existing.club || undefined)
+            : roster.name;
         const player: ReturnType<typeof createPlayerFromNames> = {
             id: existing.id,
             name: existing.name,
             positions: (existing.positions ?? []) as PlayerPosition[],
             photoUrl: existing.photoUrl ?? undefined,
             nationality: existing.nationality ?? undefined,
-            club: existing.club ?? (isInternational ? (newPlayerClub || undefined) : roster.name),
+            club: resolvedClub,
             gender: (existing.gender ?? undefined) as 'male' | 'female' | undefined,
         };
         applyPlayerToRosters(player);
