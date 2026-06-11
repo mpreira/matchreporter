@@ -315,7 +315,8 @@ export default function RosterDetailPage() {
 
     function addTeam() {
         if (!roster) return;
-        const name = `${roster.name}${matchDay ? ` J${matchDay}` : ""}`;
+        const isWorldSeries = roster.category === 'World Series';
+        const name = `${roster.name}${!isWorldSeries && matchDay ? ` J${matchDay}` : ""}`;
         const newTeam = createTeam(name, roster.id, roster.nickname, roster.color, roster.logo);
         setTeams([...(teams || []), newTeam]);
         setCompositionMessage("");
@@ -643,9 +644,26 @@ export default function RosterDetailPage() {
             club: editingPlayerClub || undefined,
         });
         const updatedPlayer = updatedRoster.players.find(p => p.id === editingPlayerId);
+        
+        // Pour joueur international: chercher l'effectif national correspondant au club
+        const linkedNationalRoster = isInternational && updatedPlayer?.club
+            ? rosters.find((r) =>
+                r.id !== roster.id &&
+                r.category &&
+                getCompetitionScope(r.category) === "national" &&
+                normalizeClubEntityName(r.name) === normalizeClubEntityName(updatedPlayer.club) &&
+                (resolveRosterGender(r) === effectiveGender || resolveRosterGender(r) === "mixed")
+            )
+            : null;
+        
         setRosters(rosters.map((r) => {
             if (r.id === roster.id) return syncRosterCurrentSeason(updatedRoster);
+            // National: ajouter aux sélections internationales sélectionnées
             if (!isInternational && updatedPlayer && editingPlayerInternationalRosterIds.has(r.id) && !r.players.some(p => p.id === editingPlayerId)) {
+                return addPlayerToRosterList(r, updatedPlayer);
+            }
+            // International: ajouter à l'effectif national correspondant
+            if (isInternational && linkedNationalRoster && r.id === linkedNationalRoster.id && !r.players.some(p => p.id === editingPlayerId)) {
                 return addPlayerToRosterList(r, updatedPlayer);
             }
             return r;
@@ -940,7 +958,7 @@ export default function RosterDetailPage() {
                         disabled={!matchDay}
                     >
                         <FontAwesomeIcon icon={faPlus} className="mr-2" />
-                        Créer « {roster.name} {matchDay && `J${matchDay}`} »
+                        Créer « {roster.name} {roster.category !== 'World Series' && matchDay && `J${matchDay}`} »
                     </button>
                 )}
                 {compositionMessage && (
