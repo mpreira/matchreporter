@@ -1818,6 +1818,18 @@ export async function saveRostersStateForAccount(accountId: string, payload: Ros
   await ensureInitialized();
   const pool = getPool();
   await cleanupExpiredAnonymousData(pool);
+
+  const previous = await pool.query<{ payload: string }>(
+    `SELECT payload FROM account_rosters_state WHERE account_id = $1`,
+    [accountId]
+  );
+  const previousParsed = previous.rows[0]
+    ? parseJsonOrNull<RosterStatePayload>(previous.rows[0].payload)
+    : null;
+  const rosterDataUnchanged =
+    JSON.stringify(previousParsed?.rosters ?? []) === JSON.stringify(payload.rosters ?? []) &&
+    JSON.stringify(previousParsed?.teams ?? []) === JSON.stringify(payload.teams ?? []);
+
   await pool.query(
     `INSERT INTO account_rosters_state (account_id, payload, updated_at)
      VALUES ($1, $2, $3)
@@ -1825,8 +1837,12 @@ export async function saveRostersStateForAccount(accountId: string, payload: Ros
     [accountId, JSON.stringify(payload), new Date().toISOString()]
   );
 
-  // Sync to structured relational tables
-  await syncRosterDataToTables(pool, accountId, payload);
+  // Sync to structured tables only when roster/team content changed.
+  // Welcome form mostly changes metadata (match day/championship/season),
+  // and running full sync for those changes is unnecessarily expensive.
+  if (!rosterDataUnchanged) {
+    await syncRosterDataToTables(pool, accountId, payload);
+  }
 }
 
 export async function getAccountById(accountId: string): Promise<Account | null> {
