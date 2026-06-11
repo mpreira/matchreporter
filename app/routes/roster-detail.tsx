@@ -72,6 +72,22 @@ function comparePlayersByPositionThenName(
     return firstPlayer.name.localeCompare(secondPlayer.name, "fr", { sensitivity: "base" });
 }
 
+function normalizeClubEntityName(name: string | null | undefined): string {
+    const value = (name ?? "").trim();
+    if (!value) return "";
+    if (value === "Stade Toulousain") return "Stade Toulousain Rugby Féminin";
+    return value;
+}
+
+function resolveRosterGender(roster: { category?: string; gender?: "male" | "female" }): "masculine" | "feminine" | "mixed" {
+    if (!roster.category) return "mixed";
+    const competitionGender = getCompetitionGender(roster.category);
+    if (competitionGender !== "mixed") return competitionGender;
+    if (roster.gender === "female") return "feminine";
+    if (roster.gender === "male") return "masculine";
+    return "mixed";
+}
+
 export default function RosterDetailPage() {
     const { rosterId: shortRosterId } = useParams();
     const {
@@ -439,10 +455,40 @@ export default function RosterDetailPage() {
     /** Applique l'ajout d'un objet Player (nouveau ou existant) aux rosters concernés */
     function applyPlayerToRosters(player: ReturnType<typeof createPlayerFromNames>) {
         if (!roster) return;
+
+        const linkedNationalRoster = isInternational && player.club
+            ? rosters.find((r) =>
+                r.id !== roster.id &&
+                r.category &&
+                getCompetitionScope(r.category) === "national" &&
+                normalizeClubEntityName(r.name) === normalizeClubEntityName(player.club) &&
+                (resolveRosterGender(r) === effectiveGender || resolveRosterGender(r) === "mixed")
+            )
+            : null;
+
+        // Pour création depuis national: cherche les sélections internationales correspondantes
+        const linkedInternationalRosters = !isInternational && player.club
+            ? rosters.filter((r) =>
+                r.id !== roster.id &&
+                r.category &&
+                getCompetitionScope(r.category) === "international" &&
+                normalizeClubEntityName(r.name) === normalizeClubEntityName(player.club) &&
+                (resolveRosterGender(r) === effectiveGender || resolveRosterGender(r) === "mixed") &&
+                !newPlayerInternationalRosterIds.has(r.id)
+            )
+            : [];
+
         const updatedRoster = addPlayerToRosterList(roster, player);
         setRosters(rosters.map((r) => {
             if (r.id === roster.id) return syncRosterCurrentSeason(updatedRoster);
             if (!isInternational && newPlayerInternationalRosterIds.has(r.id) && !r.players.some(p => p.id === player.id)) {
+                return addPlayerToRosterList(r, player);
+            }
+            // Liaison automatique depuis national vers international correspondant
+            if (!isInternational && linkedInternationalRosters.some(ir => ir.id === r.id) && !r.players.some((p) => p.id === player.id)) {
+                return addPlayerToRosterList(r, player);
+            }
+            if (isInternational && linkedNationalRoster && r.id === linkedNationalRoster.id && !r.players.some((p) => p.id === player.id)) {
                 return addPlayerToRosterList(r, player);
             }
             return r;

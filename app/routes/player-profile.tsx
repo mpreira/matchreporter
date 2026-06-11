@@ -5,7 +5,7 @@ import { useTeams } from "~/context/TeamsContext";
 import { toShortId, findFullId } from "~/utils/shortId";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowLeft, faPenToSquare } from "@fortawesome/free-solid-svg-icons";
-import { getFlagUrl, getCountryByCode } from "~/utils/countries";
+import { COUNTRIES, getFlagUrl, getCountryByCode } from "~/utils/countries";
 import type { PlayerStats } from "~/types/tracker";
 import { getCompetitionGender, getCompetitionScope } from "~/types/tracker";
 import { TOP14_CLUBS_2025_2026, PROD2_CLUBS_2025_2026, ELITE1_CLUBS_2025_2026 } from "~/utils/clubs";
@@ -83,6 +83,7 @@ export default function PlayerProfilePage() {
   const [statsMessage, setStatsMessage] = useState("");
   const [isEditingInfo, setIsEditingInfo] = useState(false);
   const [infoClubDraft, setInfoClubDraft] = useState("");
+  const [infoNationalityDraft, setInfoNationalityDraft] = useState("");
   const [infoMessage, setInfoMessage] = useState("");
   const [selectedNationalRosterId, setSelectedNationalRosterId] = useState("");
   const [nationalRosterMessage, setNationalRosterMessage] = useState("");
@@ -287,6 +288,7 @@ export default function PlayerProfilePage() {
   function saveInfo() {
     if (!roster || !player) return;
     const normalizedClubName = normalizeClubEntityName(infoClubDraft) || undefined;
+    const normalizedNationality = infoNationalityDraft.trim().toLowerCase() || undefined;
     const selectedNationalRoster =
       isInternational && infoClubRosterId
         ? rosters.find(
@@ -312,34 +314,46 @@ export default function PlayerProfilePage() {
       name: player.name,
       positions: player.positions,
       photoUrl: player.photoUrl,
-      nationality: player.nationality,
+      nationality: normalizedNationality,
       club: normalizedClubName,
       nationalRosterId: resolvedNationalRosterId,
     });
-    const playerWithClub = updatedRoster.players.find(p => p.id === player.id);
-    const newClub = normalizeClubEntityName(infoClubDraft);
-    // Gender-aware: only match national roster with same name AND compatible gender
-    const matchingNationalRoster = isInternational && newClub && playerWithClub
-      ? rosters.find((r) =>
-          r.id !== roster.id &&
-          normalizeClubEntityName(r.name) === newClub &&
-          getCompetitionScope(r.category) === 'national' &&
-          (resolveRosterGender(r) === rosterGender || resolveRosterGender(r) === 'mixed') &&
-          !r.players.some((p) => p.id === player.id)
-        )
-      : null;
-    setRosters((prev) => prev.map((r) => {
-      if (r.id === roster.id) return updatedRoster;
-      if (matchingNationalRoster && r.id === matchingNationalRoster.id && playerWithClub) {
-        return addPlayerToRosterList(r, playerWithClub);
-      }
-      return r;
-    }));
-    setIsEditingInfo(false);
-    setInfoMessage(matchingNationalRoster
-      ? `Club mis à jour. ${player.name} ajouté·e à l’effectif ${matchingNationalRoster.name}.`
-      : "Club mis à jour."
+    const playerWithClub = updatedRoster.players.find((p) => p.id === player.id);
+    const previousNationalRosterIds = new Set(
+      nationalRostersForPlayer.map((r) => r.id),
     );
+
+    setRosters((prev) =>
+      prev.map((r) => {
+        if (r.id === roster.id) return updatedRoster;
+        if (!isInternational || getCompetitionScope(r.category) !== "national") return r;
+
+        const hasPlayer = r.players.some((p) => p.id === player.id);
+        const shouldHavePlayer = !!resolvedNationalRosterId && r.id === resolvedNationalRosterId;
+
+        if (hasPlayer && !shouldHavePlayer) {
+          return deletePlayerFromRoster(r, player.id);
+        }
+        if (!hasPlayer && shouldHavePlayer && playerWithClub) {
+          return addPlayerToRosterList(r, playerWithClub);
+        }
+        return r;
+      }),
+    );
+
+    setIsEditingInfo(false);
+    if (isInternational) {
+      if (resolvedNationalRosterId) {
+        const linkedRosterName = rosters.find((r) => r.id === resolvedNationalRosterId)?.name ?? "l'effectif national";
+        setInfoMessage(`Profil mis à jour. ${player.name} est lié·e à ${linkedRosterName}.`);
+      } else if (previousNationalRosterIds.size > 0) {
+        setInfoMessage("Profil mis à jour. Liaison avec l'effectif national supprimée.");
+      } else {
+        setInfoMessage("Profil mis à jour.");
+      }
+      return;
+    }
+    setInfoMessage("Profil mis à jour.");
   }
 
   const backPath = getRosterBackPath(rosterId ? toShortId(rosterId) : undefined);
@@ -384,6 +398,7 @@ export default function PlayerProfilePage() {
                   );
                   setInfoClubRosterId(currentClubRoster?.id ?? "");
                   setInfoClubDraft(normalizeClubEntityName(player.club));
+                  setInfoNationalityDraft((player.nationality ?? "").toLowerCase());
                   setIsEditingInfo(true);
                   setInfoMessage("");
                 }}
@@ -413,7 +428,7 @@ export default function PlayerProfilePage() {
           {infoMessage && (
             <p className="text-xs text-emerald-400">{infoMessage}</p>
           )}
-          {internationalRostersForPlayer.length > 0 && (
+          {!isEditingInfo && internationalRostersForPlayer.length > 0 && (
             <p className="text-sm text-neutral-200">
               <strong>
                 Sélection{internationalRostersForPlayer.length > 1 ? "s" : ""} :
@@ -483,7 +498,7 @@ export default function PlayerProfilePage() {
                   </button>
                 </div>
               )}
-              {nationalRostersForPlayer.length > 0 && (
+              {!isInternational && nationalRostersForPlayer.length > 0 && (
                 <div className="space-y-2">
                   <p className="text-xs uppercase tracking-wide text-neutral-400">
                     Effectif{nationalRostersForPlayer.length > 1 ? "s" : ""} nationa{nationalRostersForPlayer.length > 1 ? "ux" : "l"}
@@ -539,23 +554,41 @@ export default function PlayerProfilePage() {
               ? player.positions.join(" / ")
               : "Non renseignés"}
           </p>
-          {player.nationality &&
-            (() => {
-              const country = getCountryByCode(player.nationality);
-              return (
-                <p className="text-sm text-neutral-200 flex items-center gap-1.5">
-                  <strong>Nationalité:</strong>
-                  <img
-                    src={getFlagUrl(player.nationality)}
-                    alt={country?.name ?? player.nationality}
-                    width={16}
-                    height={12}
-                    className="inline-block"
-                  />
-                  {country?.name ?? player.nationality}
-                </p>
-              );
-            })()}
+          <p className="text-sm text-neutral-200">
+            <strong>Nationalité : </strong>
+            {isEditingInfo ? (
+              <select
+                className="sp-input-control"
+                value={infoNationalityDraft}
+                onChange={(e) => setInfoNationalityDraft(e.target.value)}
+              >
+                <option value="">— Non renseignée —</option>
+                {COUNTRIES.map((country) => (
+                  <option key={country.code} value={country.code}>
+                    {country.name}
+                  </option>
+                ))}
+              </select>
+            ) : player.nationality ? (
+              (() => {
+                const country = getCountryByCode(player.nationality);
+                return (
+                  <span className="inline-flex items-center gap-1.5">
+                    <img
+                      src={getFlagUrl(player.nationality)}
+                      alt={country?.name ?? player.nationality}
+                      width={16}
+                      height={12}
+                      className="inline-block"
+                    />
+                    {country?.name ?? player.nationality}
+                  </span>
+                );
+              })()
+            ) : (
+              <span className="text-neutral-500 italic">Non renseignée</span>
+            )}
+          </p>
           <p className="text-sm text-neutral-200">
             <strong>Club : </strong>
             {isEditingInfo && isInternational ? (

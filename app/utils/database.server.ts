@@ -304,6 +304,103 @@ async function cleanupExpiredAnonymousData(pool: Pool): Promise<void> {
   );
 }
 
+/** Backfill: remplit national_roster_id pour les joueurs en effectif international ayant un club */
+async function backfillNationalRosterIds(pool: Pool): Promise<void> {
+  try {
+    // Récupère tous les joueurs en effectif international avec club mais sans national_roster_id
+    const playersResult = await pool.query(
+      `SELECT p.account_id, p.id, p.club, sr.id as roster_id, sr.gender
+       FROM players p
+       JOIN stored_rosters sr ON sr.account_id = p.account_id
+       WHERE sr.account_id NOT LIKE $1
+         AND p.club IS NOT NULL
+         AND p.national_roster_id IS NULL
+         AND EXISTS (
+           SELECT 1 FROM stored_rosters r2
+           WHERE r2.account_id = sr.account_id
+             AND r2.id = sr.id
+             AND (r2.category LIKE 'W6N%' OR r2.category = 'World Series')
+         )`,
+      [`${ANONYMOUS_SCOPE_PREFIX}%`]
+    );
+
+    for (const row of playersResult.rows) {
+      const { account_id, id, club, roster_id, gender } = row;
+      const normalizedClub = (club || "").trim();
+      if (!normalizedClub) continue;
+
+      // Cherche un effectif national correspondant (même nom de club)
+      const nationalResult = await pool.query(
+        `SELECT id, category FROM stored_rosters
+         WHERE account_id = $1
+           AND (category LIKE '%Elite%' OR category LIKE '%Pro D2%' OR category LIKE '%National%')
+           AND LOWER(name) = LOWER($2)
+         LIMIT 1`,
+        [account_id, normalizedClub]
+      );
+
+      if (nationalResult.rows.length > 0) {
+        const { id: national_id } = nationalResult.rows[0];
+        await pool.query(
+          `UPDATE players SET national_roster_id = $1, updated_at = $2
+           WHERE account_id = $3 AND id = $4`,
+          [national_id, new Date().toISOString(), account_id, id]
+        );
+      }
+    }
+  } catch (err) {
+    console.error("Backfill national_roster_ids failed:", err);
+  }
+}
+
+/** Backfill: lie les joueurs nationaux aux sélections internationales du même club via memberships */
+async function backfillInternationalMemberships(pool: Pool): Promise<void> {
+  try {
+    // Récupère tous les joueurs en effectif national avec un club
+    const playersResult = await pool.query(
+      `SELECT p.account_id, p.id, p.club
+       FROM players p
+       JOIN stored_rosters sr ON sr.account_id = p.account_id
+       WHERE sr.account_id NOT LIKE $1
+         AND p.club IS NOT NULL
+         AND EXISTS (
+           SELECT 1 FROM stored_rosters r2
+           WHERE r2.account_id = sr.account_id
+             AND r2.id = sr.id
+             AND (r2.category LIKE '%Elite%' OR r2.category LIKE '%Pro D2%' OR r2.category LIKE '%National%')
+         )`,
+      [`${ANONYMOUS_SCOPE_PREFIX}%`]
+    );
+
+    for (const row of playersResult.rows) {
+      const { account_id, id, club } = row;
+      const normalizedClub = (club || "").trim();
+      if (!normalizedClub) continue;
+
+      // Cherche les effectifs internationaux correspondants (même nom de club)
+      const intlResult = await pool.query(
+        `SELECT id FROM stored_rosters
+         WHERE account_id = $1
+           AND (category LIKE 'W6N%' OR category = 'World Series')
+           AND LOWER(name) = LOWER($2)`,
+        [account_id, normalizedClub]
+      );
+
+      // Ajoute les memberships manquants
+      for (const intlRoster of intlResult.rows) {
+        await pool.query(
+          `INSERT INTO player_roster_memberships (account_id, player_id, roster_id)
+           VALUES ($1, $2, $3)
+           ON CONFLICT DO NOTHING`,
+          [account_id, id, intlRoster.id]
+        );
+      }
+    }
+  } catch (err) {
+    console.error("Backfill international memberships failed:", err);
+  }
+}
+
 async function ensureLegacyAccount(pool: Pool): Promise<void> {
   const createdAt = new Date().toISOString();
   await pool.query(
@@ -719,6 +816,10 @@ async function initializeSchema(pool: Pool) {
   await addForeignKeyIfMissing(pool, "fk_titles_competition", "titles", "FOREIGN KEY (competition) REFERENCES competitions(name)");
   await addForeignKeyIfMissing(pool, "fk_matches_account", "matches", "FOREIGN KEY (account_id) REFERENCES accounts(id)");
   await addForeignKeyIfMissing(pool, "fk_summaries_account", "summaries", "FOREIGN KEY (account_id) REFERENCES accounts(id)");
+
+  // Backfill national_roster_ids et international memberships pour les joueurs existants
+  await backfillNationalRosterIds(pool);
+  await backfillInternationalMemberships(pool);
 
   await pool.query(
     `UPDATE accounts
@@ -1392,6 +1493,13 @@ async function ensureTestAccount(pool: Pool): Promise<void> {
  * dans les rosters de catégorie Elite 1 (category = 'Elite 1').
  * Fusionne les joueurs si les deux rosters coexistent dans un même compte.
  */
+function normalizeClubEntityName(name: string | null | undefined): string {
+  const value = (name ?? "").trim();
+  if (!value) return "";
+  if (value === "Stade Toulousain") return "Stade Toulousain Rugby Féminin";
+  return value;
+}
+
 async function migrateStadeToulousainFeminin(pool: Pool): Promise<void> {
   const OLD_NAME = "Stade Toulousain";
   const NEW_NAME = "Stade Toulousain Rugby Féminin";
