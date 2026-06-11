@@ -103,8 +103,8 @@ export default function RosterDetailPage() {
     const [editingPlayerLastError, setEditingPlayerLastError] = useState("");
     const [newPlayerClub, setNewPlayerClub] = useState("");
     const [editingPlayerClub, setEditingPlayerClub] = useState("");
-    const [newPlayerInternationalRosterId, setNewPlayerInternationalRosterId] = useState("");
-    const [editingPlayerInternationalRosterId, setEditingPlayerInternationalRosterId] = useState("");
+    const [newPlayerInternationalRosterIds, setNewPlayerInternationalRosterIds] = useState<Set<string>>(new Set());
+    const [editingPlayerInternationalRosterIds, setEditingPlayerInternationalRosterIds] = useState<Set<string>>(new Set());
     const [compositionEditTeamId, setCompositionEditTeamId] = useState<string | null>(null);
     const [selectedPlayerIds, setSelectedPlayerIds] = useState<Set<string>>(new Set());
     const [playerNumbers, setPlayerNumbers] = useState<Record<string, number>>({});
@@ -434,7 +434,7 @@ export default function RosterDetailPage() {
 
         setRosters(rosters.map((r) => {
             if (r.id === roster.id) return syncRosterCurrentSeason(updatedRoster);
-            if (!isInternational && newPlayerInternationalRosterId && r.id === newPlayerInternationalRosterId && !r.players.some(p => p.id === player.id)) {
+            if (!isInternational && newPlayerInternationalRosterIds.has(r.id) && !r.players.some(p => p.id === player.id)) {
                 return addPlayerToRosterList(r, player);
             }
             return r;
@@ -451,7 +451,7 @@ export default function RosterDetailPage() {
         setNewPlayerPhotoUrl("");
         setNewPlayerNationality("");
         setNewPlayerClub("");
-        setNewPlayerInternationalRosterId("");
+        setNewPlayerInternationalRosterIds(new Set());
         setNewPlayerFirstError("");
         setNewPlayerLastError("");
     }
@@ -467,11 +467,11 @@ export default function RosterDetailPage() {
         setEditingPlayerPhotoUrl(player.photoUrl ?? "");
         setEditingPlayerNationality(player.nationality ?? "");
         setEditingPlayerClub(!isInternational ? (player.club ?? roster?.name ?? "") : (player.club ?? ""));
-        // Pre-select current international roster if already linked
-        const currentIntlRosterId = !isInternational
-            ? rosters.find(r => r.id !== roster?.id && r.category && getCompetitionScope(r.category) === 'international' && r.players.some(p => p.id === player.id))?.id ?? ""
-            : "";
-        setEditingPlayerInternationalRosterId(currentIntlRosterId);
+        // Pré-sélectionner tous les effectifs internationaux auxquels le joueur appartient déjà
+        const currentIntlRosterIds = !isInternational
+            ? new Set(rosters.filter(r => r.id !== roster?.id && r.category && getCompetitionScope(r.category) === 'international' && r.players.some(p => p.id === player.id)).map(r => r.id))
+            : new Set<string>();
+        setEditingPlayerInternationalRosterIds(currentIntlRosterIds);
         setEditingPlayerFirstError(validateName(formattedFirst));
         setEditingPlayerLastError(validateName(formattedLast));
         setPlayerMessage("");
@@ -485,7 +485,7 @@ export default function RosterDetailPage() {
         setEditingPlayerPhotoUrl("");
         setEditingPlayerNationality("");
         setEditingPlayerClub("");
-        setEditingPlayerInternationalRosterId("");
+        setEditingPlayerInternationalRosterIds(new Set());
         setEditingPlayerFirstError("");
         setEditingPlayerLastError("");
     }
@@ -511,7 +511,7 @@ export default function RosterDetailPage() {
         const updatedPlayer = updatedRoster.players.find(p => p.id === editingPlayerId);
         setRosters(rosters.map((r) => {
             if (r.id === roster.id) return syncRosterCurrentSeason(updatedRoster);
-            if (!isInternational && updatedPlayer && editingPlayerInternationalRosterId && r.id === editingPlayerInternationalRosterId && !r.players.some(p => p.id === editingPlayerId)) {
+            if (!isInternational && updatedPlayer && editingPlayerInternationalRosterIds.has(r.id) && !r.players.some(p => p.id === editingPlayerId)) {
                 return addPlayerToRosterList(r, updatedPlayer);
             }
             return r;
@@ -964,18 +964,26 @@ export default function RosterDetailPage() {
                                 </>
                             ) : availableInternationalRosters.length > 0 && (
                                 <div className="sp-input-shell">
-                                    <label className="sp-input-label" htmlFor="newPlayerInternational">Sélection internationale (facultatif)</label>
-                                    <select
-                                        id="newPlayerInternational"
-                                        className="sp-input-control"
-                                        value={newPlayerInternationalRosterId}
-                                        onChange={(event) => setNewPlayerInternationalRosterId(event.target.value)}
-                                    >
-                                        <option value="">— Aucune —</option>
+                                    <label className="sp-input-label">Sélection(s) internationale(s) (facultatif)</label>
+                                    <div className="flex flex-col gap-1 pt-1">
                                         {availableInternationalRosters.map((r) => (
-                                            <option key={r.id} value={r.id}>{r.name}</option>
+                                            <label key={r.id} className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                                                <input
+                                                    type="checkbox"
+                                                    className="accent-blue-500"
+                                                    checked={newPlayerInternationalRosterIds.has(r.id)}
+                                                    onChange={(e) => {
+                                                        setNewPlayerInternationalRosterIds((prev) => {
+                                                            const next = new Set(prev);
+                                                            if (e.target.checked) next.add(r.id); else next.delete(r.id);
+                                                            return next;
+                                                        });
+                                                    }}
+                                                />
+                                                {r.name}
+                                            </label>
                                         ))}
-                                    </select>
+                                    </div>
                                 </div>
                             )}
                             <div className="flex items-center justify-center gap-2">
@@ -1135,18 +1143,26 @@ export default function RosterDetailPage() {
                                 </div>
                             ) : availableInternationalRosters.length > 0 && (
                                 <div className="sp-input-shell">
-                                    <label className="sp-input-label" htmlFor="editingPlayerInternational">Sélection internationale (facultatif)</label>
-                                    <select
-                                        id="editingPlayerInternational"
-                                        className="sp-input-control"
-                                        value={editingPlayerInternationalRosterId}
-                                        onChange={(event) => setEditingPlayerInternationalRosterId(event.target.value)}
-                                    >
-                                        <option value="">— Aucune —</option>
+                                    <label className="sp-input-label">Sélection(s) internationale(s) (facultatif)</label>
+                                    <div className="flex flex-col gap-1 pt-1">
                                         {availableInternationalRosters.map((r) => (
-                                            <option key={r.id} value={r.id}>{r.name}</option>
+                                            <label key={r.id} className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                                                <input
+                                                    type="checkbox"
+                                                    className="accent-blue-500"
+                                                    checked={editingPlayerInternationalRosterIds.has(r.id)}
+                                                    onChange={(e) => {
+                                                        setEditingPlayerInternationalRosterIds((prev) => {
+                                                            const next = new Set(prev);
+                                                            if (e.target.checked) next.add(r.id); else next.delete(r.id);
+                                                            return next;
+                                                        });
+                                                    }}
+                                                />
+                                                {r.name}
+                                            </label>
                                         ))}
-                                    </select>
+                                    </div>
                                 </div>
                             )}
                             <div className="flex items-center justify-center gap-2">

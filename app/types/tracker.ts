@@ -59,9 +59,9 @@ export interface Player {
     club?: string;
     gender?: PlayerGender;
     stats?: PlayerStats;
-    nationalRosterId?: string;       // FK → Roster.id (équipe nationale/club)
-    internationalRosterId?: string;  // FK → Roster.id (sélection internationale)
-    rosterIds?: string[];            // tous les effectifs auxquels appartient ce joueur
+    nationalRosterId?: string;        // FK → Roster.id (club national)
+    internationalRosterIds?: string[]; // FK[] → Roster.id (sélections internationales — W6N, World Series…)
+    rosterIds?: string[];             // tous les effectifs auxquels appartient ce joueur
 }
 
 export interface CompositionEntry {
