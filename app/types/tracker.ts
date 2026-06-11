@@ -136,6 +136,7 @@ export interface Roster {
     players: Player[]; // effectif global (mirrors current season)
     seasons?: Record<string, SeasonData>;
     category?: 'Top 14' | 'Pro D2' | 'Elite 1' | 'Women\'s Six Nations' | 'World Series';
+    gender?: PlayerGender;   // précise le genre quand la catégorie ne le détermine pas (ex : World Series)
     founded_in?: number; // year of creation
     titles?: Title[]; // list of titles won
     currentRanking?: number; // current league ranking

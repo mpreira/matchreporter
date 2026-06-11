@@ -154,7 +154,12 @@ export default function RosterDetailPage() {
 
     const isInternational = getCompetitionScope(roster?.category) === 'international';
     const rosterGender = roster ? getCompetitionGender(roster.category) : 'masculine';
-    const clubOptions = rosterGender === 'feminine'
+    // Pour les catégories mixtes (World Series), on utilise le genre stocké sur l'effectif
+    const effectiveGender: 'masculine' | 'feminine' =
+        rosterGender === 'mixed'
+            ? (roster?.gender === 'female' ? 'feminine' : 'masculine')
+            : rosterGender === 'feminine' ? 'feminine' : 'masculine';
+    const clubOptions = effectiveGender === 'feminine'
         ? ELITE1_CLUBS_2025_2026
         : [...TOP14_CLUBS_2025_2026, ...PROD2_CLUBS_2025_2026];
 
@@ -164,9 +169,11 @@ export default function RosterDetailPage() {
             r.id !== roster.id &&
             r.category &&
             getCompetitionScope(r.category) === 'international' &&
-            (getCompetitionGender(r.category) === 'mixed' || getCompetitionGender(r.category) === rosterGender)
+            (getCompetitionGender(r.category) === 'mixed' || getCompetitionGender(r.category) === effectiveGender ||
+             (r.category === 'World Series' && r.gender === undefined) ||
+             (r.category === 'World Series' && (r.gender === 'male' ? 'masculine' : 'feminine') === effectiveGender))
         ).sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
-    }, [rosters, roster, isInternational, rosterGender]);
+    }, [rosters, roster, isInternational, effectiveGender]);
 
     const compositionEditTeam = useMemo(
         () => rosterTeams.find((team) => team.id === compositionEditTeamId) ?? null,

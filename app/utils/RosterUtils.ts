@@ -15,7 +15,8 @@ export function createNewRoster(
     coach?: string,
     president?: string,
     founded_in?: number,
-    titlesText?: string
+    titlesText?: string,
+    gender?: 'male' | 'female'
 ): Roster {
     return {
         id: uuidv4(),
@@ -27,6 +28,7 @@ export function createNewRoster(
         president,
         players: [],
         category,
+        gender,
         founded_in,
         titles: titlesText
             ? titlesText.split("\n").filter((l) => l.trim()).map((line) => {

@@ -52,6 +52,7 @@ export default function RosterManager({
     const [newRosterFoundedIn, setNewRosterFoundedIn] = useState("");
     const [newRosterTitles, setNewRosterTitles] = useState("");
     const [newRosterCategory, setNewRosterCategory] = useState<Championship>('Top 14');
+    const [newRosterGender, setNewRosterGender] = useState<'male' | 'female'>('male');
     const championshipOptions: readonly Championship[] = ['Top 14', 'Pro D2', 'Elite 1', "Women's Six Nations", 'World Series'];
     const [showCreateRosterForm, setShowCreateRosterForm] = useState(false);
     const [activeGenderTab, setActiveGenderTab] = useState<CompetitionGender>('masculine');
@@ -193,7 +194,8 @@ export default function RosterManager({
             coach || undefined,
             president || undefined,
             !isNaN(foundedIn as number) ? foundedIn : undefined,
-            titlesText || undefined
+            titlesText || undefined,
+            newRosterCategory === 'World Series' ? newRosterGender : undefined
         );
         setRosters([...rosters, newRoster]);
         setActiveRosterId(newRoster.id);
@@ -213,6 +215,7 @@ export default function RosterManager({
         setNewRosterFoundedIn("");
         setNewRosterTitles("");
         setNewRosterCategory('Top 14');
+        setNewRosterGender('male');
         setRosterFormError("");
     }
 
@@ -499,6 +502,35 @@ export default function RosterManager({
                                 ))}
                             </select>
                         </div>
+                        {newRosterCategory === 'World Series' && (
+                            <div className="sp-input-shell">
+                                <label className="sp-input-label">Genre</label>
+                                <div className="flex items-center gap-4 pt-1">
+                                    <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                                        <input
+                                            type="radio"
+                                            name="newRosterGender"
+                                            value="male"
+                                            className="accent-blue-500"
+                                            checked={newRosterGender === 'male'}
+                                            onChange={() => setNewRosterGender('male')}
+                                        />
+                                        Masculin
+                                    </label>
+                                    <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                                        <input
+                                            type="radio"
+                                            name="newRosterGender"
+                                            value="female"
+                                            className="accent-pink-500"
+                                            checked={newRosterGender === 'female'}
+                                            onChange={() => setNewRosterGender('female')}
+                                        />
+                                        Féminin
+                                    </label>
+                                </div>
+                            </div>
+                        )}
                         <div className="sp-input-shell">
                             <label className="sp-input-label" htmlFor="newRosterName">Nom de l'effectif</label>
                             <input
