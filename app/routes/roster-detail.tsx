@@ -225,7 +225,18 @@ export default function RosterDetailPage() {
         return [...roster.players].sort(comparePlayersByPositionThenName);
     }, [roster]);
 
-    const compositionName = matchDay ? `${roster?.name} J${matchDay}` : null;
+    const normalizedMatchDay = matchDay.trim();
+    const parsedMatchDay = normalizedMatchDay.match(/^J?\s*(\d+)$/i);
+    const matchDayNumber = parsedMatchDay ? Number(parsedMatchDay[1]) : Number.NaN;
+    const hasNumericMatchDay = Number.isInteger(matchDayNumber) && matchDayNumber > 0;
+    const isWorldSeriesRoster = roster?.category === "World Series";
+    const worldSeriesStageLabel = isWorldSeriesRoster ? normalizedMatchDay : "";
+    const hasWorldSeriesStage = Boolean(worldSeriesStageLabel);
+    const compositionSuffix = isWorldSeriesRoster
+        ? (hasWorldSeriesStage ? ` - ${worldSeriesStageLabel}` : "")
+        : (hasNumericMatchDay ? ` J${matchDayNumber}` : "");
+    const compositionName = roster && compositionSuffix ? `${roster.name}${compositionSuffix}` : null;
+    const canCreateComposition = isWorldSeriesRoster ? hasWorldSeriesStage : hasNumericMatchDay;
     const hasCompositionForDay = Boolean(
         compositionName && rosterTeams.some((team) => team.name === compositionName)
     );
@@ -315,8 +326,7 @@ export default function RosterDetailPage() {
 
     function addTeam() {
         if (!roster) return;
-        const isWorldSeries = roster.category === 'World Series';
-        const name = `${roster.name}${!isWorldSeries && matchDay ? ` J${matchDay}` : ""}`;
+        const name = compositionName ?? roster.name;
         const newTeam = createTeam(name, roster.id, roster.nickname, roster.color, roster.logo);
         setTeams([...(teams || []), newTeam]);
         setCompositionMessage("");
@@ -955,10 +965,10 @@ export default function RosterDetailPage() {
                     <button
                         className="sp-button sp-button-sm sp-button-blue"
                         onClick={addTeam}
-                        disabled={!matchDay}
+                        disabled={!canCreateComposition}
                     >
                         <FontAwesomeIcon icon={faPlus} className="mr-2" />
-                        Créer « {roster.name} {roster.category !== 'World Series' && matchDay && `J${matchDay}`} »
+                        Créer « {roster.name}{compositionSuffix} »
                     </button>
                 )}
                 {compositionMessage && (

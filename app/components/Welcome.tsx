@@ -6,6 +6,11 @@ import { Link } from "react-router";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCircleUser } from "@fortawesome/free-solid-svg-icons";
 
+export const worldSeriesStages = [
+  "Dubai", "Cape Town", "Singapour", "Perth",
+  "Vancouver", "New York", "Hong Kong", "Valladolid", "Bordeaux",
+] as const;
+
 export function Welcome() {
   const { account, connected, logout } = useAccount();
   const { matchDay, season, sport, championship, setMatchDay, setSeason, setSport, setChampionship } = useTeams();
@@ -15,10 +20,6 @@ export function Welcome() {
   const sportOptions = ["Rugby", "Football"] as const;
   const championshipOptions = ["Top 14", "Pro D2", "Elite 1", "Women's Six Nations", "World Series"] as const;
   const seasonOptions = ["2025/2026", "2024/2025", "2023/2024"] as const;
-  const worldSeriesStages = [
-    "Dubai", "Cape Town", "Singapour", "Perth",
-    "Vancouver", "New York", "Hong Kong", "Valladolid", "Bordeaux",
-  ] as const;
 
   const isWorldSeries = championship === "World Series";
 
@@ -142,7 +143,7 @@ export function Welcome() {
                   className="sp-input-control"
                   value={matchDay}
                   onChange={(e) => setMatchDay(e.target.value)}
-                  placeholder="ex. J1"
+                  placeholder="ex. 1"
                 />
               </div>
             )}
