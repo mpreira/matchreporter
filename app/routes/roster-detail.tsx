@@ -663,7 +663,7 @@ export default function RosterDetailPage() {
                 return addPlayerToRosterList(r, updatedPlayer);
             }
             // International: ajouter à l'effectif national correspondant
-            if (isInternational && linkedNationalRoster && r.id === linkedNationalRoster.id && !r.players.some(p => p.id === editingPlayerId)) {
+            if (isInternational && updatedPlayer && linkedNationalRoster && r.id === linkedNationalRoster.id && !r.players.some(p => p.id === editingPlayerId)) {
                 return addPlayerToRosterList(r, updatedPlayer);
             }
             return r;
