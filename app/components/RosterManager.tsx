@@ -792,7 +792,7 @@ export default function RosterManager({
             ) : (
                 <div className="grid grid-cols-2 gap-2 mt-6 md:grid-cols-3">
                     {filteredRosters.map((r) => (
-                        <div key={r.id} className="flex items-center justify-between gap-2 rounded bg-neutral-900 border border-neutral-700 hover:bg-neutral-800 py-2 px-4">
+                        <div key={r.id} className={`flex items-center justify-between gap-2 rounded bg-neutral-900 border hover:bg-neutral-800 py-2 px-4 ${r.category === 'World Series' && r.gender === 'female' ? 'border-purple-900' : r.category === 'World Series' ? 'border-sky-300' : 'border-neutral-700'}`}>
                             <button
                                 className="text-white font-semibold text-base md:text-lg w-full text-left"
                                 onClick={() => {
@@ -801,7 +801,7 @@ export default function RosterManager({
                                 }}
                             >
                                 <span>{r.name}</span>
-                                {r.nickname && <span className="block text-xs text-sky-300">{r.nickname}</span>}
+                                {r.nickname && <span className={`block text-xs ${r.category === 'World Series' && r.gender === 'female' ? 'text-purple-400' : 'text-sky-300'}`}>{r.nickname}</span>}
                             </button>
                             <button
                                 className="sp-button sp-button-yellow sp-button-icon"
