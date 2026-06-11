@@ -307,31 +307,24 @@ async function cleanupExpiredAnonymousData(pool: Pool): Promise<void> {
 /** Backfill: remplit national_roster_id pour les joueurs en effectif international ayant un club */
 async function backfillNationalRosterIds(pool: Pool): Promise<void> {
   try {
-    // Récupère tous les joueurs en effectif international avec club mais sans national_roster_id
+    // Récupère tous les joueurs avec club mais sans national_roster_id
     const playersResult = await pool.query(
-      `SELECT p.account_id, p.id, p.club, sr.id as roster_id, sr.gender
+      `SELECT p.account_id, p.id, p.club
        FROM players p
-       JOIN stored_rosters sr ON sr.account_id = p.account_id
-       WHERE sr.account_id NOT LIKE $1
+       WHERE p.account_id NOT LIKE $1
          AND p.club IS NOT NULL
-         AND p.national_roster_id IS NULL
-         AND EXISTS (
-           SELECT 1 FROM stored_rosters r2
-           WHERE r2.account_id = sr.account_id
-             AND r2.id = sr.id
-             AND (r2.category LIKE 'W6N%' OR r2.category = 'World Series')
-         )`,
+         AND p.national_roster_id IS NULL`,
       [`${ANONYMOUS_SCOPE_PREFIX}%`]
     );
 
     for (const row of playersResult.rows) {
-      const { account_id, id, club, roster_id, gender } = row;
+      const { account_id, id, club } = row;
       const normalizedClub = (club || "").trim();
       if (!normalizedClub) continue;
 
       // Cherche un effectif national correspondant (même nom de club)
       const nationalResult = await pool.query(
-        `SELECT id, category FROM stored_rosters
+        `SELECT id FROM stored_rosters
          WHERE account_id = $1
            AND (category LIKE '%Elite%' OR category LIKE '%Pro D2%' OR category LIKE '%National%')
            AND LOWER(name) = LOWER($2)
@@ -356,19 +349,12 @@ async function backfillNationalRosterIds(pool: Pool): Promise<void> {
 /** Backfill: lie les joueurs nationaux aux sélections internationales du même club via memberships */
 async function backfillInternationalMemberships(pool: Pool): Promise<void> {
   try {
-    // Récupère tous les joueurs en effectif national avec un club
+    // Récupère tous les joueurs avec club
     const playersResult = await pool.query(
       `SELECT p.account_id, p.id, p.club
        FROM players p
-       JOIN stored_rosters sr ON sr.account_id = p.account_id
-       WHERE sr.account_id NOT LIKE $1
-         AND p.club IS NOT NULL
-         AND EXISTS (
-           SELECT 1 FROM stored_rosters r2
-           WHERE r2.account_id = sr.account_id
-             AND r2.id = sr.id
-             AND (r2.category LIKE '%Elite%' OR r2.category LIKE '%Pro D2%' OR r2.category LIKE '%National%')
-         )`,
+       WHERE p.account_id NOT LIKE $1
+         AND p.club IS NOT NULL`,
       [`${ANONYMOUS_SCOPE_PREFIX}%`]
     );
 
