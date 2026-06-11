@@ -4,10 +4,13 @@ import crypto from "crypto";
 import { Pool } from "pg";
 import type { LiveSnapshot } from "~/types/live";
 import type { Roster, Team } from "~/types/tracker";
+import { getCompetitionScope, getCompetitionGender } from "~/types/tracker";
 import { rosterStatePayloadSchema } from "~/utils/schemas.server";
+import { ALL_CLUBS } from "~/utils/clubs";
+import { FRANCE_W6N_SQUAD_2025_2026 } from "~/utils/france-w6n-squad";
 
 type Sport = "Rugby" | "Football";
-type Championship = "Top 14" | "Pro D2";
+type Championship = "Top 14" | "Pro D2" | "Elite 1" | "Women's Six Nations" | "World Series";
 
 export interface RosterStatePayload {
   rosters: Roster[];
@@ -101,6 +104,9 @@ const ADMIN_ACCOUNT_PASSWORD = process.env.BOOTSTRAP_ADMIN_PASSWORD?.trim() || "
 const ANONYMOUS_SCOPE_PREFIX = "anon:";
 const ANONYMOUS_DATA_TTL_MS = 24 * 60 * 60 * 1000;
 const ANONYMOUS_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+const SEED_TEST_ACCOUNT_ID = process.env.SEED_TEST_ACCOUNT_ID?.trim() || "";
+const SEED_TEST_ACCOUNT_NAME = process.env.SEED_TEST_ACCOUNT_NAME?.trim() || "Compte test";
+const SEED_TEST_ACCOUNT_ACCESS_CODE = process.env.SEED_TEST_ACCOUNT_ACCESS_CODE?.trim() || "";
 
 const defaultRosterState: RosterStatePayload = {
   rosters: [],
@@ -298,6 +304,89 @@ async function cleanupExpiredAnonymousData(pool: Pool): Promise<void> {
   );
 }
 
+/** Backfill: remplit national_roster_id pour les joueurs en effectif international ayant un club */
+async function backfillNationalRosterIds(pool: Pool): Promise<void> {
+  try {
+    // Récupère tous les joueurs avec club mais sans national_roster_id
+    const playersResult = await pool.query(
+      `SELECT p.account_id, p.id, p.club
+       FROM players p
+       WHERE p.account_id NOT LIKE $1
+         AND p.club IS NOT NULL
+         AND p.national_roster_id IS NULL`,
+      [`${ANONYMOUS_SCOPE_PREFIX}%`]
+    );
+
+    for (const row of playersResult.rows) {
+      const { account_id, id, club } = row;
+      const normalizedClub = (club || "").trim();
+      if (!normalizedClub) continue;
+
+      // Cherche un effectif national correspondant (même nom de club)
+      const nationalResult = await pool.query(
+        `SELECT id FROM stored_rosters
+         WHERE account_id = $1
+           AND (category LIKE '%Elite%' OR category LIKE '%Pro D2%' OR category LIKE '%National%')
+           AND LOWER(name) = LOWER($2)
+         LIMIT 1`,
+        [account_id, normalizedClub]
+      );
+
+      if (nationalResult.rows.length > 0) {
+        const { id: national_id } = nationalResult.rows[0];
+        await pool.query(
+          `UPDATE players SET national_roster_id = $1, updated_at = $2
+           WHERE account_id = $3 AND id = $4`,
+          [national_id, new Date().toISOString(), account_id, id]
+        );
+      }
+    }
+  } catch (err) {
+    console.error("Backfill national_roster_ids failed:", err);
+  }
+}
+
+/** Backfill: lie les joueurs nationaux aux sélections internationales du même club via memberships */
+async function backfillInternationalMemberships(pool: Pool): Promise<void> {
+  try {
+    // Récupère tous les joueurs avec club
+    const playersResult = await pool.query(
+      `SELECT p.account_id, p.id, p.club
+       FROM players p
+       WHERE p.account_id NOT LIKE $1
+         AND p.club IS NOT NULL`,
+      [`${ANONYMOUS_SCOPE_PREFIX}%`]
+    );
+
+    for (const row of playersResult.rows) {
+      const { account_id, id, club } = row;
+      const normalizedClub = (club || "").trim();
+      if (!normalizedClub) continue;
+
+      // Cherche les effectifs internationaux correspondants (même nom de club)
+      const intlResult = await pool.query(
+        `SELECT id FROM stored_rosters
+         WHERE account_id = $1
+           AND (category LIKE 'W6N%' OR category = 'World Series')
+           AND LOWER(name) = LOWER($2)`,
+        [account_id, normalizedClub]
+      );
+
+      // Ajoute les memberships manquants
+      for (const intlRoster of intlResult.rows) {
+        await pool.query(
+          `INSERT INTO player_roster_memberships (account_id, player_id, roster_id)
+           VALUES ($1, $2, $3)
+           ON CONFLICT DO NOTHING`,
+          [account_id, id, intlRoster.id]
+        );
+      }
+    }
+  } catch (err) {
+    console.error("Backfill international memberships failed:", err);
+  }
+}
+
 async function ensureLegacyAccount(pool: Pool): Promise<void> {
   const createdAt = new Date().toISOString();
   await pool.query(
@@ -444,7 +533,6 @@ async function initializeSchema(pool: Pool) {
     ALTER TABLE accounts ADD COLUMN IF NOT EXISTS last_modified_by TEXT;
     ALTER TABLE summaries ADD COLUMN IF NOT EXISTS last_modified_by TEXT;
     ALTER TABLE match_day_selections ADD COLUMN IF NOT EXISTS last_modified_by TEXT;
-    ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS last_modified_by TEXT;
 
     CREATE INDEX IF NOT EXISTS idx_live_matches_public_slug ON live_matches(public_slug);
     CREATE INDEX IF NOT EXISTS idx_live_matches_expires_at ON live_matches(expires_at);
@@ -523,6 +611,7 @@ async function initializeSchema(pool: Pool) {
     ALTER TABLE stored_rosters ADD COLUMN IF NOT EXISTS current_points INTEGER;
     ALTER TABLE stored_rosters ADD COLUMN IF NOT EXISTS last_five_matches JSONB;
     ALTER TABLE stored_rosters ADD COLUMN IF NOT EXISTS season_record JSONB;
+    ALTER TABLE stored_rosters ADD COLUMN IF NOT EXISTS seasons JSONB;
 
     CREATE TABLE IF NOT EXISTS stored_teams (
       id TEXT NOT NULL,
@@ -572,6 +661,19 @@ async function initializeSchema(pool: Pool) {
       titularisations_2526 INTEGER DEFAULT 0,
       updated_at TIMESTAMPTZ,
       UNIQUE (account_id, player_id)
+    );
+
+    ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS last_modified_by TEXT;
+
+    ALTER TABLE players ADD COLUMN IF NOT EXISTS national_roster_id TEXT;
+    ALTER TABLE players ADD COLUMN IF NOT EXISTS international_roster_id TEXT;
+    ALTER TABLE players ADD COLUMN IF NOT EXISTS gender TEXT;
+
+    CREATE TABLE IF NOT EXISTS player_roster_memberships (
+      account_id TEXT NOT NULL,
+      player_id  TEXT NOT NULL,
+      roster_id  TEXT NOT NULL,
+      PRIMARY KEY (account_id, player_id, roster_id)
     );
 
     CREATE TABLE IF NOT EXISTS titles (
@@ -639,6 +741,9 @@ async function initializeSchema(pool: Pool) {
     CREATE INDEX IF NOT EXISTS idx_stored_teams_roster_id ON stored_teams(account_id, roster_id);
     CREATE INDEX IF NOT EXISTS idx_players_account_id ON players(account_id);
     CREATE INDEX IF NOT EXISTS idx_players_name ON players(name);
+    CREATE INDEX IF NOT EXISTS idx_players_gender ON players(account_id, gender);
+    CREATE INDEX IF NOT EXISTS idx_player_roster_memberships_player ON player_roster_memberships(account_id, player_id);
+    CREATE INDEX IF NOT EXISTS idx_player_roster_memberships_roster ON player_roster_memberships(account_id, roster_id);
     CREATE INDEX IF NOT EXISTS idx_player_stats_account_id ON player_stats(account_id);
     CREATE INDEX IF NOT EXISTS idx_player_stats_player_id ON player_stats(account_id, player_id);
     CREATE INDEX IF NOT EXISTS idx_titles_roster ON titles(account_id, roster_id);
@@ -689,12 +794,18 @@ async function initializeSchema(pool: Pool) {
   await addForeignKeyIfMissing(pool, "fk_stored_teams_account", "stored_teams", "FOREIGN KEY (account_id) REFERENCES accounts(id)");
   await addForeignKeyIfMissing(pool, "fk_stored_teams_roster", "stored_teams", "FOREIGN KEY (account_id, roster_id) REFERENCES stored_rosters(account_id, id)");
   await addForeignKeyIfMissing(pool, "fk_players_account", "players", "FOREIGN KEY (account_id) REFERENCES accounts(id)");
+  await addForeignKeyIfMissing(pool, "fk_players_national_roster", "players", "FOREIGN KEY (account_id, national_roster_id) REFERENCES stored_rosters(account_id, id)");
+  await addForeignKeyIfMissing(pool, "fk_players_international_roster", "players", "FOREIGN KEY (account_id, international_roster_id) REFERENCES stored_rosters(account_id, id)");
   await addForeignKeyIfMissing(pool, "fk_player_stats_account", "player_stats", "FOREIGN KEY (account_id) REFERENCES accounts(id)");
   await addForeignKeyIfMissing(pool, "fk_player_stats_player", "player_stats", "FOREIGN KEY (account_id, player_id) REFERENCES players(account_id, id)");
   await addForeignKeyIfMissing(pool, "fk_titles_roster", "titles", "FOREIGN KEY (account_id, roster_id) REFERENCES stored_rosters(account_id, id)");
   await addForeignKeyIfMissing(pool, "fk_titles_competition", "titles", "FOREIGN KEY (competition) REFERENCES competitions(name)");
   await addForeignKeyIfMissing(pool, "fk_matches_account", "matches", "FOREIGN KEY (account_id) REFERENCES accounts(id)");
   await addForeignKeyIfMissing(pool, "fk_summaries_account", "summaries", "FOREIGN KEY (account_id) REFERENCES accounts(id)");
+
+  // Backfill national_roster_ids et international memberships pour les joueurs existants
+  await backfillNationalRosterIds(pool);
+  await backfillInternationalMemberships(pool);
 
   await pool.query(
     `UPDATE accounts
@@ -844,6 +955,7 @@ async function syncRosterDataToTables(
     await client.query("DELETE FROM player_stats WHERE account_id = $1", [accountId]);
     await client.query("DELETE FROM titles WHERE account_id = $1", [accountId]);
     await client.query("DELETE FROM stored_teams WHERE account_id = $1", [accountId]);
+    await client.query("DELETE FROM player_roster_memberships WHERE account_id = $1", [accountId]);
     await client.query("DELETE FROM players WHERE account_id = $1", [accountId]);
     await client.query("DELETE FROM stored_rosters WHERE account_id = $1", [accountId]);
 
@@ -865,8 +977,8 @@ async function syncRosterDataToTables(
         `INSERT INTO stored_rosters
          (id, account_id, name, nickname, color, logo, coach, president, category,
           founded_in, players, titles, created_at, updated_at, last_modified_by,
-          coach_id, president_id, current_ranking, current_points, last_five_matches, season_record)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13,$14,$15,$16,$17,$18,$19,$20)`,
+          coach_id, president_id, current_ranking, current_points, last_five_matches, season_record, seasons)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
         [
           r.id,
           accountId,
@@ -888,18 +1000,27 @@ async function syncRosterDataToTables(
           r.currentPoints ?? null,
           r.lastFiveMatches ? JSON.stringify(r.lastFiveMatches) : null,
           r.seasonRecord ? JSON.stringify(r.seasonRecord) : null,
+          r.seasons ? JSON.stringify(r.seasons) : null,
         ]
       );
 
       // 6. Insert players from this roster
+      const rosterScope = getCompetitionScope(r.category);
+      const rosterGender = getCompetitionGender(r.category) === 'feminine' ? 'female'
+                         : getCompetitionGender(r.category) === 'masculine' ? 'male'
+                         : null;
       for (const p of rPlayers) {
         if (!p.id || !p.name) continue;
+
+        const nationalRosterId = rosterScope === 'national' ? r.id : null;
+        const internationalRosterId = rosterScope === 'international' ? r.id : null;
 
         await client.query(
           `INSERT INTO players
            (id, account_id, name, number, positions, photo_url, nationality, club,
+            gender, national_roster_id, international_roster_id,
             created_at, updated_at, last_modified_by)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,$10)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12,$13)
            ON CONFLICT (account_id, id) DO UPDATE SET
              name = EXCLUDED.name,
              number = EXCLUDED.number,
@@ -907,6 +1028,9 @@ async function syncRosterDataToTables(
              photo_url = EXCLUDED.photo_url,
              nationality = EXCLUDED.nationality,
              club = COALESCE(EXCLUDED.club, players.club),
+             gender = COALESCE(EXCLUDED.gender, players.gender),
+             national_roster_id = COALESCE(EXCLUDED.national_roster_id, players.national_roster_id),
+             international_roster_id = COALESCE(EXCLUDED.international_roster_id, players.international_roster_id),
              updated_at = EXCLUDED.updated_at`,
           [
             p.id,
@@ -917,9 +1041,19 @@ async function syncRosterDataToTables(
             p.photoUrl ?? null,
             p.nationality ?? null,
             p.club ?? r.name,
+            rosterGender,
+            nationalRosterId,
+            internationalRosterId,
             nowIso,
             accountId,
           ]
+        );
+
+        // Insert membership
+        await client.query(
+          `INSERT INTO player_roster_memberships (account_id, player_id, roster_id)
+           VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+          [accountId, p.id, r.id]
         );
 
         // 7. Insert player_stats if present
@@ -1255,6 +1389,313 @@ async function backfillStructuredTables(pool: Pool): Promise<void> {
   console.log("[backfill] Done.");
 }
 
+// ---------------------------------------------------------------------------
+// Seed: default club rosters for a specific account
+// ---------------------------------------------------------------------------
+
+async function seedDefaultRostersForAccount(pool: Pool, accountId: string): Promise<void> {
+  const existing = await pool.query<{ name: string; category: string }>(
+    `SELECT name, category FROM stored_rosters WHERE account_id = $1`,
+    [accountId]
+  );
+  const existingKeys = new Set(
+    existing.rows.map((r) => `${r.name}||${r.category}`)
+  );
+
+  const missing = ALL_CLUBS.filter(
+    (c) => !existingKeys.has(`${c.name}||${c.category}`)
+  );
+  if (missing.length === 0) return;
+
+  console.log(`[seed] Account "${accountId}": adding ${missing.length} default club roster(s)…`);
+
+  const currentPayload = await pool.query<{ payload: string }>(
+    `SELECT payload FROM account_rosters_state WHERE account_id = $1`,
+    [accountId]
+  );
+  const parsed = currentPayload.rows[0]
+    ? parseJsonOrNull<RosterStatePayload>(currentPayload.rows[0].payload)
+    : null;
+
+  const existingRosters: Roster[] = parsed?.rosters ?? [];
+  const existingTeams: Team[] = parsed?.teams ?? [];
+
+  const newRosters: Roster[] = missing.map((c) => ({
+    id: crypto.randomUUID(),
+    name: c.name,
+    nickname: c.nickname,
+    color: c.color,
+    category: c.category,
+    players: [],
+    currentRanking: c.currentRanking,
+    currentPoints: c.currentPoints,
+  }));
+
+  const payload: RosterStatePayload = {
+    rosters: [...existingRosters, ...newRosters],
+    teams: existingTeams,
+    activeRosterId: parsed?.activeRosterId ?? null,
+    matchDay: parsed?.matchDay,
+    season: parsed?.season,
+    sport: parsed?.sport,
+    championship: parsed?.championship,
+  };
+
+  const now = new Date().toISOString();
+  await pool.query(
+    `INSERT INTO account_rosters_state (account_id, payload, updated_at)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (account_id) DO UPDATE SET payload = EXCLUDED.payload, updated_at = EXCLUDED.updated_at`,
+    [accountId, JSON.stringify(payload), now]
+  );
+  await syncRosterDataToTables(pool, accountId, payload);
+}
+
+async function ensureTestAccount(pool: Pool): Promise<void> {
+  if (!SEED_TEST_ACCOUNT_ID || !SEED_TEST_ACCOUNT_ACCESS_CODE) return;
+
+  const now = new Date().toISOString();
+  await pool.query(
+    `INSERT INTO accounts (id, name, email, password_hash, is_admin, access_code_hash, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, FALSE, $5, $6, $6)
+     ON CONFLICT (id) DO NOTHING`,
+    [
+      SEED_TEST_ACCOUNT_ID,
+      SEED_TEST_ACCOUNT_NAME,
+      `${SEED_TEST_ACCOUNT_ID}@seed.local`,
+      hashPassword(SEED_TEST_ACCOUNT_ACCESS_CODE),
+      hashAccountAccessCode(SEED_TEST_ACCOUNT_ACCESS_CODE),
+      now,
+    ]
+  );
+  await seedDefaultRostersForAccount(pool, SEED_TEST_ACCOUNT_ID);
+}
+
+// Seed: default club rosters (Top 14 + Pro D2) for the legacy account
+// ---------------------------------------------------------------------------
+
+/**
+ * Migration : renomme "Stade Toulousain" → "Stade Toulousain Rugby Féminin"
+ * dans les rosters de catégorie Elite 1 (category = 'Elite 1').
+ * Fusionne les joueurs si les deux rosters coexistent dans un même compte.
+ */
+function normalizeClubEntityName(name: string | null | undefined): string {
+  const value = (name ?? "").trim();
+  if (!value) return "";
+  if (value === "Stade Toulousain") return "Stade Toulousain Rugby Féminin";
+  return value;
+}
+
+async function migrateStadeToulousainFeminin(pool: Pool): Promise<void> {
+  const OLD_NAME = "Stade Toulousain";
+  const NEW_NAME = "Stade Toulousain Rugby Féminin";
+
+  // Corriger dans stored_rosters (table structurée)
+  await pool.query(
+    `UPDATE stored_rosters SET name = $1
+     WHERE name = $2 AND category = 'Elite 1'
+       AND NOT EXISTS (
+         SELECT 1 FROM stored_rosters sr2
+         WHERE sr2.account_id = stored_rosters.account_id
+           AND sr2.name = $1
+           AND sr2.category = 'Elite 1'
+       )`,
+    [NEW_NAME, OLD_NAME]
+  );
+
+  // Corriger dans les payloads JSON (account_rosters_state)
+  const accounts = await pool.query<{ account_id: string; payload: string }>(
+    `SELECT account_id, payload FROM account_rosters_state
+     WHERE payload LIKE $1`,
+    [`%${OLD_NAME}%`]
+  );
+
+  for (const row of accounts.rows) {
+    const state = parseJsonOrNull<RosterStatePayload>(row.payload);
+    if (!state) continue;
+
+    let changed = false;
+
+    // Chercher le roster avec l'ancien nom ET un éventuel doublon avec le nouveau nom
+    const oldRoster = state.rosters.find(
+      (r) => r.name === OLD_NAME && r.category === "Elite 1"
+    );
+    const newRoster = state.rosters.find(
+      (r) => r.name === NEW_NAME && r.category === "Elite 1"
+    );
+
+    let updatedRosters = state.rosters;
+
+    if (oldRoster && newRoster) {
+      // Fusion : ajouter les joueurs de l'ancien roster vers le nouveau (sans doublon par id)
+      const existingIds = new Set(newRoster.players.map((p) => p.id));
+      const merged = {
+        ...newRoster,
+        players: [
+          ...newRoster.players,
+          ...oldRoster.players.filter((p) => !existingIds.has(p.id)),
+        ],
+      };
+      updatedRosters = state.rosters
+        .filter((r) => r.id !== oldRoster.id)
+        .map((r) => (r.id === newRoster.id ? merged : r));
+      console.log(
+        `[migrate] Fusion Stade Toulousain → Rugby Féminin pour le compte ${row.account_id} (${oldRoster.players.length} joueurs migrés)`
+      );
+      changed = true;
+    } else if (oldRoster) {
+      // Simple renommage
+      updatedRosters = state.rosters.map((r) =>
+        r.id === oldRoster.id ? { ...r, name: NEW_NAME } : r
+      );
+      changed = true;
+    }
+
+    if (!changed) continue;
+
+    const updatedState = { ...state, rosters: updatedRosters };
+    const now = new Date().toISOString();
+    await pool.query(
+      `UPDATE account_rosters_state SET payload = $2, updated_at = $3 WHERE account_id = $1`,
+      [row.account_id, JSON.stringify(updatedState), now]
+    );
+    await syncRosterDataToTables(pool, row.account_id, updatedState);
+  }
+
+  // Corriger le champ `club` des joueurs qui avaient l'ancien nom
+  await pool.query(
+    `UPDATE players SET club = $1 WHERE club = $2`,
+    [NEW_NAME, OLD_NAME]
+  );
+}
+
+async function seedDefaultRosters(pool: Pool): Promise<void> {
+  const existing = await pool.query<{ name: string; category: string }>(
+    `SELECT name, category FROM stored_rosters WHERE account_id = $1`,
+    [LEGACY_ACCOUNT_ID]
+  );
+  const existingKeys = new Set(
+    existing.rows.map((r) => `${r.name}||${r.category}`)
+  );
+
+  const missing = ALL_CLUBS.filter(
+    (c) => !existingKeys.has(`${c.name}||${c.category}`)
+  );
+  if (missing.length === 0) return;
+
+  console.log(`[seed] Adding ${missing.length} default club roster(s)…`);
+
+  const currentPayload = await pool.query<{ payload: string }>(
+    `SELECT payload FROM account_rosters_state WHERE account_id = $1`,
+    [LEGACY_ACCOUNT_ID]
+  );
+  const parsed = currentPayload.rows[0]
+    ? parseJsonOrNull<RosterStatePayload>(currentPayload.rows[0].payload)
+    : null;
+
+  const existingRosters: Roster[] = parsed?.rosters ?? [];
+  const existingTeams: Team[] = parsed?.teams ?? [];
+
+  const newRosters: Roster[] = missing.map((c) => ({
+    id: crypto.randomUUID(),
+    name: c.name,
+    nickname: c.nickname,
+    color: c.color,
+    category: c.category,
+    players: [],
+    currentRanking: c.currentRanking,
+    currentPoints: c.currentPoints,
+  }));
+
+  const payload: RosterStatePayload = {
+    rosters: [...existingRosters, ...newRosters],
+    teams: existingTeams,
+    activeRosterId: parsed?.activeRosterId ?? null,
+    matchDay: parsed?.matchDay,
+    season: parsed?.season,
+    sport: parsed?.sport,
+    championship: parsed?.championship,
+  };
+
+  const now = new Date().toISOString();
+  await pool.query(
+    `INSERT INTO account_rosters_state (account_id, payload, updated_at)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (account_id) DO UPDATE SET payload = EXCLUDED.payload, updated_at = EXCLUDED.updated_at`,
+    [LEGACY_ACCOUNT_ID, JSON.stringify(payload), now]
+  );
+  await syncRosterDataToTables(pool, LEGACY_ACCOUNT_ID, payload);
+}
+
+/**
+ * Pour chaque compte ayant au moins un effectif Women's Six Nations,
+ * ajoute les joueuses du XV de France Féminin manquantes (contrôle doublon
+ * par nom normalisé). Ne crée pas de nouveau roster — se greffe sur
+ * les rosters W6N existants.
+ */
+async function seedFranceW6NPlayers(pool: Pool): Promise<void> {
+  // Uniquement pour les comptes enregistrés — exclut le compte legacy
+  // (usage non-authentifié) et les scopes anonymes (préfixe "anon:").
+  const accounts = await pool.query<{ account_id: string }>(
+    `SELECT DISTINCT account_id FROM stored_rosters
+     WHERE category = $1
+       AND account_id != $2
+       AND account_id NOT LIKE $3`,
+    ["Women's Six Nations", LEGACY_ACCOUNT_ID, `${ANONYMOUS_SCOPE_PREFIX}%`]
+  );
+  if (accounts.rows.length === 0) return;
+
+  for (const { account_id } of accounts.rows) {
+    const stateResult = await pool.query<{ payload: string }>(
+      `SELECT payload FROM account_rosters_state WHERE account_id = $1`,
+      [account_id]
+    );
+    if (!stateResult.rows[0]) continue;
+
+    const state = parseJsonOrNull<RosterStatePayload>(stateResult.rows[0].payload);
+    if (!state) continue;
+
+    let changed = false;
+    const updatedRosters = state.rosters.map((roster) => {
+      if (roster.category !== "Women's Six Nations") return roster;
+
+      const existingNames = new Set(
+        (roster.players ?? []).map((p) => p.name.trim().toLowerCase())
+      );
+
+      const toAdd = FRANCE_W6N_SQUAD_2025_2026.filter(
+        (sp) => !existingNames.has(sp.name.toLowerCase())
+      ).map((sp) => ({
+        id: crypto.randomUUID(),
+        name: sp.name,
+        positions: sp.positions,
+        nationality: sp.nationality,
+        gender: sp.gender,
+      }));
+
+      if (toAdd.length === 0) return roster;
+
+      changed = true;
+      console.log(
+        `[seed] W6N roster "${roster.name}" (compte ${account_id}) : ajout de ${toAdd.length} joueuse(s)…`
+      );
+      return { ...roster, players: [...(roster.players ?? []), ...toAdd] };
+    });
+
+    if (!changed) continue;
+
+    const updatedState = { ...state, rosters: updatedRosters };
+    const now = new Date().toISOString();
+    await pool.query(
+      `UPDATE account_rosters_state
+       SET payload = $2, updated_at = $3
+       WHERE account_id = $1`,
+      [account_id, JSON.stringify(updatedState), now]
+    );
+    await syncRosterDataToTables(pool, account_id, updatedState);
+  }
+}
+
 async function ensureInitialized() {
   if (initializationPromise) {
     await initializationPromise;
@@ -1266,6 +1707,10 @@ async function ensureInitialized() {
     await initializeSchema(pool);
     await migrateFromJsonFiles(pool);
     await backfillStructuredTables(pool);
+    await migrateStadeToulousainFeminin(pool);
+    await seedDefaultRosters(pool);
+    await ensureTestAccount(pool);
+    await seedFranceW6NPlayers(pool);
   })();
 
   await initializationPromise;
@@ -1273,6 +1718,26 @@ async function ensureInitialized() {
 
 export async function getRostersState(): Promise<RosterStatePayload> {
   return getRostersStateForAccount(LEGACY_ACCOUNT_ID);
+}
+
+const CHAMPIONSHIP_ALIASES: Record<string, Championship> = {
+  "W6N": "Women's Six Nations",
+  "Women's 6 Nations": "Women's Six Nations",
+};
+
+function normalizeRosterStatePayload(payload: RosterStatePayload): RosterStatePayload {
+  const normalizeChampionship = (v?: string): Championship | undefined => {
+    if (!v) return undefined;
+    return (CHAMPIONSHIP_ALIASES[v] ?? v) as Championship;
+  };
+  return {
+    ...payload,
+    championship: normalizeChampionship(payload.championship),
+    rosters: (payload.rosters ?? []).map((r) => ({
+      ...r,
+      category: r.category ? (CHAMPIONSHIP_ALIASES[r.category] ?? r.category) : r.category,
+    })),
+  };
 }
 
 export async function getRostersStateForAccount(accountId: string): Promise<RosterStatePayload> {
@@ -1287,7 +1752,8 @@ export async function getRostersStateForAccount(accountId: string): Promise<Rost
 
   if (!row) return defaultRosterState;
   const parsed = parseJsonOrNull<RosterStatePayload>(row.payload);
-  return parsed ?? defaultRosterState;
+  if (!parsed) return defaultRosterState;
+  return normalizeRosterStatePayload(parsed);
 }
 
 export async function saveRostersState(payload: RosterStatePayload): Promise<void> {
@@ -2204,6 +2670,8 @@ export interface DbPlayer {
   photoUrl: string | null;
   nationality: string | null;
   club: string | null;
+  gender: string | null;
+  rosterIds: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -2231,17 +2699,29 @@ function mapPlayerRow(row: Record<string, unknown>): DbPlayer {
     photoUrl: (row.photo_url as string) ?? null,
     nationality: (row.nationality as string) ?? null,
     club: (row.club as string) ?? null,
+    gender: (row.gender as string) ?? null,
+    rosterIds: Array.isArray(row.roster_ids) ? row.roster_ids as string[] : [],
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
 }
 
-export async function listPlayers(accountId: string): Promise<DbPlayer[]> {
+export async function listPlayers(
+  accountId: string,
+  options?: { gender?: string | null }
+): Promise<DbPlayer[]> {
   await ensureInitialized();
   const pool = getPool();
+  const gender = options?.gender;
   const result = await pool.query(
-    "SELECT * FROM players WHERE account_id = $1 ORDER BY name",
-    [accountId]
+    `SELECT p.*,
+       COALESCE(array_agg(m.roster_id) FILTER (WHERE m.roster_id IS NOT NULL), '{}') AS roster_ids
+     FROM players p
+     LEFT JOIN player_roster_memberships m ON m.account_id = p.account_id AND m.player_id = p.id
+     WHERE p.account_id = $1${gender ? " AND p.gender = $2" : ""}
+     GROUP BY p.id, p.account_id
+     ORDER BY p.name`,
+    gender ? [accountId, gender] : [accountId]
   );
   return result.rows.map(mapPlayerRow);
 }
@@ -2250,11 +2730,16 @@ export async function getPlayerById(accountId: string, playerId: string): Promis
   await ensureInitialized();
   const pool = getPool();
   const result = await pool.query(
-    `SELECT p.*, ps.points, ps.essais, ps.pied, ps.taux_transfo, ps.cartons,
-            ps.drops, ps.matchs_2526, ps.titularisations_2526
+    `SELECT p.*,
+       COALESCE(array_agg(m.roster_id) FILTER (WHERE m.roster_id IS NOT NULL), '{}') AS roster_ids,
+       ps.points, ps.essais, ps.pied, ps.taux_transfo, ps.cartons,
+       ps.drops, ps.matchs_2526, ps.titularisations_2526
      FROM players p
+     LEFT JOIN player_roster_memberships m ON m.account_id = p.account_id AND m.player_id = p.id
      LEFT JOIN player_stats ps ON ps.account_id = p.account_id AND ps.player_id = p.id
-     WHERE p.account_id = $1 AND p.id = $2`,
+     WHERE p.account_id = $1 AND p.id = $2
+     GROUP BY p.id, p.account_id, ps.points, ps.essais, ps.pied, ps.taux_transfo,
+              ps.cartons, ps.drops, ps.matchs_2526, ps.titularisations_2526`,
     [accountId, playerId]
   );
   const row = result.rows[0];
@@ -2277,16 +2762,17 @@ export async function getPlayerById(accountId: string, playerId: string): Promis
 export async function createPlayer(accountId: string, input: {
   id: string; name: string; number?: number | null; positions?: string[] | null;
   photoUrl?: string | null; nationality?: string | null; club?: string | null;
+  gender?: string | null;
 }): Promise<DbPlayer> {
   await ensureInitialized();
   const pool = getPool();
   const now = new Date().toISOString();
   const result = await pool.query(
-    `INSERT INTO players (id, account_id, name, number, positions, photo_url, nationality, club, created_at, updated_at, last_modified_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,$10)
+    `INSERT INTO players (id, account_id, name, number, positions, photo_url, nationality, club, gender, created_at, updated_at, last_modified_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10,$11)
      RETURNING *`,
     [input.id, accountId, input.name, input.number ?? null, JSON.stringify(input.positions ?? []),
-     input.photoUrl ?? null, input.nationality ?? null, input.club ?? null, now, accountId]
+     input.photoUrl ?? null, input.nationality ?? null, input.club ?? null, input.gender ?? null, now, accountId]
   );
   const player = mapPlayerRow(result.rows[0]);
   await insertAuditLog(pool, { tableName: "players", rowId: input.id, action: "INSERT", by: accountId, after: player as unknown as Record<string, unknown> });
@@ -2296,6 +2782,7 @@ export async function createPlayer(accountId: string, input: {
 export async function updatePlayer(accountId: string, playerId: string, input: {
   name?: string; number?: number | null; positions?: string[] | null;
   photoUrl?: string | null; nationality?: string | null; club?: string | null;
+  gender?: string | null;
 }): Promise<DbPlayer | null> {
   await ensureInitialized();
   const pool = getPool();
@@ -2309,12 +2796,14 @@ export async function updatePlayer(accountId: string, playerId: string, input: {
        photo_url = CASE WHEN $6::text IS NULL THEN photo_url ELSE $6 END,
        nationality = CASE WHEN $7::text IS NULL THEN nationality ELSE $7 END,
        club = CASE WHEN $8::text IS NULL THEN club ELSE $8 END,
+       gender = CASE WHEN $10::text IS NULL THEN gender ELSE $10 END,
        updated_at = $9
      WHERE account_id = $1 AND id = $2
      RETURNING *`,
     [accountId, playerId, input.name ?? null, input.number ?? null,
      input.positions ? JSON.stringify(input.positions) : null,
-     input.photoUrl ?? null, input.nationality ?? null, input.club ?? null, now]
+     input.photoUrl ?? null, input.nationality ?? null, input.club ?? null, now,
+     input.gender ?? null]
   );
   const row = result.rows[0];
   if (!row) return null;
@@ -2345,6 +2834,70 @@ export async function searchPlayers(accountId: string, query: string): Promise<D
   const result = await pool.query(
     "SELECT * FROM players WHERE account_id = $1 AND name ILIKE $2 ORDER BY name LIMIT 50",
     [accountId, `%${query}%`]
+  );
+  return result.rows.map(mapPlayerRow);
+}
+
+// ---------------------------------------------------------------------------
+// Player registry — roster memberships
+// ---------------------------------------------------------------------------
+
+export async function getPlayerRosterMemberships(
+  accountId: string,
+  playerId: string
+): Promise<string[]> {
+  await ensureInitialized();
+  const pool = getPool();
+  const result = await pool.query<{ roster_id: string }>(
+    `SELECT roster_id FROM player_roster_memberships WHERE account_id = $1 AND player_id = $2`,
+    [accountId, playerId]
+  );
+  return result.rows.map((r) => r.roster_id);
+}
+
+export async function linkPlayerToRoster(
+  accountId: string,
+  playerId: string,
+  rosterId: string
+): Promise<void> {
+  await ensureInitialized();
+  const pool = getPool();
+  await pool.query(
+    `INSERT INTO player_roster_memberships (account_id, player_id, roster_id)
+     VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+    [accountId, playerId, rosterId]
+  );
+}
+
+export async function unlinkPlayerFromRoster(
+  accountId: string,
+  playerId: string,
+  rosterId: string
+): Promise<void> {
+  await ensureInitialized();
+  const pool = getPool();
+  await pool.query(
+    `DELETE FROM player_roster_memberships WHERE account_id = $1 AND player_id = $2 AND roster_id = $3`,
+    [accountId, playerId, rosterId]
+  );
+}
+
+export async function getPlayersForRoster(
+  accountId: string,
+  rosterId: string
+): Promise<DbPlayer[]> {
+  await ensureInitialized();
+  const pool = getPool();
+  const result = await pool.query(
+    `SELECT p.*,
+       array_agg(m2.roster_id) FILTER (WHERE m2.roster_id IS NOT NULL) AS roster_ids
+     FROM player_roster_memberships m
+     JOIN players p ON p.account_id = m.account_id AND p.id = m.player_id
+     LEFT JOIN player_roster_memberships m2 ON m2.account_id = p.account_id AND m2.player_id = p.id
+     WHERE m.account_id = $1 AND m.roster_id = $2
+     GROUP BY p.id, p.account_id
+     ORDER BY p.name`,
+    [accountId, rosterId]
   );
   return result.rows.map(mapPlayerRow);
 }

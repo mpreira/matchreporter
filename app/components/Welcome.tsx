@@ -6,6 +6,11 @@ import { Link } from "react-router";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCircleUser } from "@fortawesome/free-solid-svg-icons";
 
+export const worldSeriesStages = [
+  "Dubai", "Cape Town", "Singapour", "Perth",
+  "Vancouver", "New York", "Hong Kong", "Valladolid", "Bordeaux",
+] as const;
+
 export function Welcome() {
   const { account, connected, logout } = useAccount();
   const { matchDay, season, sport, championship, setMatchDay, setSeason, setSport, setChampionship } = useTeams();
@@ -13,8 +18,10 @@ export function Welcome() {
   const [accountMessage, setAccountMessage] = useState("");
 
   const sportOptions = ["Rugby", "Football"] as const;
-  const championshipOptions = ["Top 14", "Pro D2"] as const;
+  const championshipOptions = ["Top 14", "Pro D2", "Elite 1", "Women's Six Nations", "World Series"] as const;
   const seasonOptions = ["2025/2026", "2024/2025", "2023/2024"] as const;
+
+  const isWorldSeries = championship === "World Series";
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -95,25 +102,15 @@ export function Welcome() {
               </select>
             </div>
             <div className="sp-input-shell">
-              <label className="sp-input-label" data-slot="label" htmlFor="matchDayInput">Journée</label>
-              <input
-                id="matchDayInput"
-                type="text"
-                className="sp-input-control"
-                value={matchDay}
-                onChange={(e) => setMatchDay(e.target.value)}
-                placeholder="ex. J1"
-              />
-            </div>
-            <div className="sp-input-shell">
               <label className="sp-input-label" htmlFor="championshipSelect">Championnat</label>
               <select
                 id="championshipSelect"
                 className="sp-input-control"
                 value={championship}
-                onChange={(e) =>
-                  setChampionship(e.target.value as "Top 14" | "Pro D2")
-                }
+                onChange={(e) => {
+                  setChampionship(e.target.value as "Top 14" | "Pro D2" | "Elite 1" | "Women's Six Nations" | "World Series");
+                  setMatchDay("");
+                }}
               >
                 {championshipOptions.map((option) => (
                   <option key={option} value={option}>
@@ -122,6 +119,34 @@ export function Welcome() {
                 ))}
               </select>
             </div>
+            {isWorldSeries ? (
+              <div className="sp-input-shell">
+                <label className="sp-input-label" htmlFor="worldSeriesStageSelect">Étape</label>
+                <select
+                  id="worldSeriesStageSelect"
+                  className="sp-input-control"
+                  value={matchDay}
+                  onChange={(e) => setMatchDay(e.target.value)}
+                >
+                  <option value="">— Sélectionner une étape —</option>
+                  {worldSeriesStages.map((stage) => (
+                    <option key={stage} value={stage}>{stage}</option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div className="sp-input-shell">
+                <label className="sp-input-label" htmlFor="matchDayInput">Journée</label>
+                <input
+                  id="matchDayInput"
+                  type="text"
+                  className="sp-input-control"
+                  value={matchDay}
+                  onChange={(e) => setMatchDay(e.target.value)}
+                  placeholder="ex. 1"
+                />
+              </div>
+            )}
             <div className="sp-input-shell">
               <label className="sp-input-label" htmlFor="seasonSelect">Saison</label>
               <select

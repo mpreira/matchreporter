@@ -3,7 +3,8 @@ import { Link, useParams } from "react-router";
 import type { Route } from "./+types/roster-detail";
 import { useTeams } from "~/context/TeamsContext";
 import { toShortId, findFullId } from "~/utils/shortId";
-import { PLAYER_POSITIONS, CURRENT_SEASON, type PlayerPosition, type Team } from "~/types/tracker";
+import { PLAYER_POSITIONS, CURRENT_SEASON, type PlayerPosition, type Team, getCompetitionScope, getCompetitionGender } from "~/types/tracker";
+import { TOP14_CLUBS_2025_2026, PROD2_CLUBS_2025_2026, ELITE1_CLUBS_2025_2026 } from "~/utils/clubs";
 import {
     addPlayerToRosterList,
     createPlayerFromNames,
@@ -71,6 +72,22 @@ function comparePlayersByPositionThenName(
     return firstPlayer.name.localeCompare(secondPlayer.name, "fr", { sensitivity: "base" });
 }
 
+function normalizeClubEntityName(name: string | null | undefined): string {
+    const value = (name ?? "").trim();
+    if (!value) return "";
+    if (value === "Stade Toulousain") return "Stade Toulousain Rugby Féminin";
+    return value;
+}
+
+function resolveRosterGender(roster: { category?: string; gender?: "male" | "female" }): "masculine" | "feminine" | "mixed" {
+    if (!roster.category) return "mixed";
+    const competitionGender = getCompetitionGender(roster.category);
+    if (competitionGender !== "mixed") return competitionGender;
+    if (roster.gender === "female") return "feminine";
+    if (roster.gender === "male") return "masculine";
+    return "mixed";
+}
+
 export default function RosterDetailPage() {
     const { rosterId: shortRosterId } = useParams();
     const {
@@ -100,6 +117,28 @@ export default function RosterDetailPage() {
     const [newPlayerLastError, setNewPlayerLastError] = useState("");
     const [editingPlayerFirstError, setEditingPlayerFirstError] = useState("");
     const [editingPlayerLastError, setEditingPlayerLastError] = useState("");
+    const [newPlayerClub, setNewPlayerClub] = useState("");
+    const [editingPlayerClub, setEditingPlayerClub] = useState("");
+    const [newPlayerInternationalRosterIds, setNewPlayerInternationalRosterIds] = useState<Set<string>>(new Set());
+    const [editingPlayerInternationalRosterIds, setEditingPlayerInternationalRosterIds] = useState<Set<string>>(new Set());
+
+    // Détection de doublon — joueur existant en base avec le même nom
+    type ExistingPlayerCandidate = {
+        id: string;
+        name: string;
+        positions: string[];
+        photoUrl: string | null;
+        nationality: string | null;
+        club: string | null;
+        gender: string | null;
+        rosterIds: string[];
+    };
+    const [duplicateCandidate, setDuplicateCandidate] = useState<ExistingPlayerCandidate | null>(null);
+    // Données du formulaire en attente (en cas de doublon détecté)
+    const [pendingNewPlayer, setPendingNewPlayer] = useState<{
+        formattedFirst: string;
+        formattedLast: string;
+    } | null>(null);
     const [compositionEditTeamId, setCompositionEditTeamId] = useState<string | null>(null);
     const [selectedPlayerIds, setSelectedPlayerIds] = useState<Set<string>>(new Set());
     const [playerNumbers, setPlayerNumbers] = useState<Record<string, number>>({});
@@ -147,6 +186,29 @@ export default function RosterDetailPage() {
         [teams, roster?.id]
     );
 
+    const isInternational = getCompetitionScope(roster?.category) === 'international';
+    const rosterGender = roster ? getCompetitionGender(roster.category) : 'masculine';
+    // Pour les catégories mixtes (World Series), on utilise le genre stocké sur l'effectif
+    const effectiveGender: 'masculine' | 'feminine' =
+        rosterGender === 'mixed'
+            ? (roster?.gender === 'female' ? 'feminine' : 'masculine')
+            : rosterGender === 'feminine' ? 'feminine' : 'masculine';
+    const clubOptions = effectiveGender === 'feminine'
+        ? ELITE1_CLUBS_2025_2026
+        : [...TOP14_CLUBS_2025_2026, ...PROD2_CLUBS_2025_2026];
+
+    const availableInternationalRosters = useMemo(() => {
+        if (!roster || isInternational) return [];
+        return rosters.filter((r) =>
+            r.id !== roster.id &&
+            r.category &&
+            getCompetitionScope(r.category) === 'international' &&
+            (getCompetitionGender(r.category) === 'mixed' || getCompetitionGender(r.category) === effectiveGender ||
+             (r.category === 'World Series' && r.gender === undefined) ||
+             (r.category === 'World Series' && (r.gender === 'male' ? 'masculine' : 'feminine') === effectiveGender))
+        ).sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
+    }, [rosters, roster, isInternational, effectiveGender]);
+
     const compositionEditTeam = useMemo(
         () => rosterTeams.find((team) => team.id === compositionEditTeamId) ?? null,
         [rosterTeams, compositionEditTeamId]
@@ -163,7 +225,18 @@ export default function RosterDetailPage() {
         return [...roster.players].sort(comparePlayersByPositionThenName);
     }, [roster]);
 
-    const compositionName = matchDay ? `${roster?.name} J${matchDay}` : null;
+    const normalizedMatchDay = matchDay.trim();
+    const parsedMatchDay = normalizedMatchDay.match(/^J?\s*(\d+)$/i);
+    const matchDayNumber = parsedMatchDay ? Number(parsedMatchDay[1]) : Number.NaN;
+    const hasNumericMatchDay = Number.isInteger(matchDayNumber) && matchDayNumber > 0;
+    const isWorldSeriesRoster = roster?.category === "World Series";
+    const worldSeriesStageLabel = isWorldSeriesRoster ? normalizedMatchDay : "";
+    const hasWorldSeriesStage = Boolean(worldSeriesStageLabel);
+    const compositionSuffix = isWorldSeriesRoster
+        ? (hasWorldSeriesStage ? ` - ${worldSeriesStageLabel}` : "")
+        : (hasNumericMatchDay ? ` J${matchDayNumber}` : "");
+    const compositionName = roster && compositionSuffix ? `${roster.name}${compositionSuffix}` : null;
+    const canCreateComposition = isWorldSeriesRoster ? hasWorldSeriesStage : hasNumericMatchDay;
     const hasCompositionForDay = Boolean(
         compositionName && rosterTeams.some((team) => team.name === compositionName)
     );
@@ -253,7 +326,7 @@ export default function RosterDetailPage() {
 
     function addTeam() {
         if (!roster) return;
-        const name = `${roster.name}${matchDay ? ` J${matchDay}` : ""}`;
+        const name = compositionName ?? roster.name;
         const newTeam = createTeam(name, roster.id, roster.nickname, roster.color, roster.logo);
         setTeams([...(teams || []), newTeam]);
         setCompositionMessage("");
@@ -390,7 +463,50 @@ export default function RosterDetailPage() {
         setTeams(updateTeamInList(teams || [], updatedTeam));
     }
 
-    function addPlayerToRoster() {
+    /** Applique l'ajout d'un objet Player (nouveau ou existant) aux rosters concernés */
+    function applyPlayerToRosters(player: ReturnType<typeof createPlayerFromNames>) {
+        if (!roster) return;
+
+        const linkedNationalRoster = isInternational && player.club
+            ? rosters.find((r) =>
+                r.id !== roster.id &&
+                r.category &&
+                getCompetitionScope(r.category) === "national" &&
+                normalizeClubEntityName(r.name) === normalizeClubEntityName(player.club) &&
+                (resolveRosterGender(r) === effectiveGender || resolveRosterGender(r) === "mixed")
+            )
+            : null;
+
+        // Pour création depuis national: cherche les sélections internationales correspondantes
+        const linkedInternationalRosters = !isInternational && player.club
+            ? rosters.filter((r) =>
+                r.id !== roster.id &&
+                r.category &&
+                getCompetitionScope(r.category) === "international" &&
+                normalizeClubEntityName(r.name) === normalizeClubEntityName(player.club) &&
+                (resolveRosterGender(r) === effectiveGender || resolveRosterGender(r) === "mixed") &&
+                !newPlayerInternationalRosterIds.has(r.id)
+            )
+            : [];
+
+        const updatedRoster = addPlayerToRosterList(roster, player);
+        setRosters(rosters.map((r) => {
+            if (r.id === roster.id) return syncRosterCurrentSeason(updatedRoster);
+            if (!isInternational && newPlayerInternationalRosterIds.has(r.id) && !r.players.some(p => p.id === player.id)) {
+                return addPlayerToRosterList(r, player);
+            }
+            // Liaison automatique depuis national vers international correspondant
+            if (!isInternational && linkedInternationalRosters.some(ir => ir.id === r.id) && !r.players.some((p) => p.id === player.id)) {
+                return addPlayerToRosterList(r, player);
+            }
+            if (isInternational && linkedNationalRoster && r.id === linkedNationalRoster.id && !r.players.some((p) => p.id === player.id)) {
+                return addPlayerToRosterList(r, player);
+            }
+            return r;
+        }));
+    }
+
+    async function addPlayerToRoster() {
         if (!roster) return;
         const formattedFirst = formatName(newPlayerFirst).trim();
         const formattedLast = formatName(newPlayerLast).trim();
@@ -401,18 +517,75 @@ export default function RosterDetailPage() {
         if (firstError || lastError) return;
         if (!newPlayerFirst && !newPlayerLast) return;
 
+        const fullName = `${formattedFirst} ${formattedLast}`.trim();
+
+        // Vérifier l'existence en base
+        try {
+            const res = await fetch(`/api/search?entity=players&q=${encodeURIComponent(fullName)}`);
+            if (res.ok) {
+                const data = await res.json() as { results: ExistingPlayerCandidate[] };
+                const exact = data.results.find(
+                    (p) => p.name.trim().toLowerCase() === fullName.toLowerCase()
+                );
+                if (exact && !roster.players.some((p) => p.id === exact.id)) {
+                    // Doublon détecté → ouvrir le modal
+                    setDuplicateCandidate(exact);
+                    setPendingNewPlayer({ formattedFirst, formattedLast });
+                    return;
+                }
+            }
+        } catch {
+            // Échec de la recherche → on continue la création normale
+        }
+
+        createAndAddNewPlayer(formattedFirst, formattedLast);
+    }
+
+    function createAndAddNewPlayer(formattedFirst: string, formattedLast: string) {
+        if (!roster) return;
         const player = createPlayerFromNames(
             formattedFirst,
             formattedLast,
             newPlayerPositions,
             newPlayerPhotoUrl,
-            newPlayerNationality || undefined
+            newPlayerNationality || undefined,
+            isInternational ? (newPlayerClub || undefined) : roster.name
         );
-        const updatedRoster = addPlayerToRosterList(roster, player);
-
-        setRosters(rosters.map((r) => (r.id === roster.id ? syncRosterCurrentSeason(updatedRoster) : r)));
+        applyPlayerToRosters(player);
         closeAddPlayerForm();
         setPlayerMessage("Joueur ajouté à l'effectif.");
+    }
+
+    function confirmUseExistingPlayer() {
+        if (!roster || !duplicateCandidate) return;
+        // Reconstruit un objet Player depuis le candidat existant (en réutilisant son ID)
+        const existing = duplicateCandidate;
+        const player: ReturnType<typeof createPlayerFromNames> = {
+            id: existing.id,
+            name: existing.name,
+            positions: (existing.positions ?? []) as PlayerPosition[],
+            photoUrl: existing.photoUrl ?? undefined,
+            nationality: existing.nationality ?? undefined,
+            club: existing.club ?? (isInternational ? (newPlayerClub || undefined) : roster.name),
+            gender: (existing.gender ?? undefined) as 'male' | 'female' | undefined,
+        };
+        applyPlayerToRosters(player);
+        setDuplicateCandidate(null);
+        setPendingNewPlayer(null);
+        closeAddPlayerForm();
+        setPlayerMessage("Joueur existant ajouté à l'effectif.");
+    }
+
+    function confirmCreateNewPlayer() {
+        if (!pendingNewPlayer) return;
+        setDuplicateCandidate(null);
+        setPendingNewPlayer(null);
+        createAndAddNewPlayer(pendingNewPlayer.formattedFirst, pendingNewPlayer.formattedLast);
+    }
+
+    function dismissDuplicateModal() {
+        setDuplicateCandidate(null);
+        setPendingNewPlayer(null);
     }
 
     function closeAddPlayerForm() {
@@ -422,11 +595,13 @@ export default function RosterDetailPage() {
         setNewPlayerPositions([]);
         setNewPlayerPhotoUrl("");
         setNewPlayerNationality("");
+        setNewPlayerClub("");
+        setNewPlayerInternationalRosterIds(new Set());
         setNewPlayerFirstError("");
         setNewPlayerLastError("");
     }
 
-    function startEditPlayer(player: { id: string; name: string; positions?: PlayerPosition[]; photoUrl?: string; nationality?: string }) {
+    function startEditPlayer(player: { id: string; name: string; positions?: PlayerPosition[]; photoUrl?: string; nationality?: string; club?: string }) {
         const { first, last } = parsePlayerName(player.name);
         const formattedFirst = formatName(first);
         const formattedLast = formatName(last);
@@ -436,6 +611,12 @@ export default function RosterDetailPage() {
         setEditingPlayerPositions(player.positions ?? []);
         setEditingPlayerPhotoUrl(player.photoUrl ?? "");
         setEditingPlayerNationality(player.nationality ?? "");
+        setEditingPlayerClub(!isInternational ? (player.club ?? roster?.name ?? "") : (player.club ?? ""));
+        // Pré-sélectionner tous les effectifs internationaux auxquels le joueur appartient déjà
+        const currentIntlRosterIds = !isInternational
+            ? new Set(rosters.filter(r => r.id !== roster?.id && r.category && getCompetitionScope(r.category) === 'international' && r.players.some(p => p.id === player.id)).map(r => r.id))
+            : new Set<string>();
+        setEditingPlayerInternationalRosterIds(currentIntlRosterIds);
         setEditingPlayerFirstError(validateName(formattedFirst));
         setEditingPlayerLastError(validateName(formattedLast));
         setPlayerMessage("");
@@ -448,6 +629,8 @@ export default function RosterDetailPage() {
         setEditingPlayerPositions([]);
         setEditingPlayerPhotoUrl("");
         setEditingPlayerNationality("");
+        setEditingPlayerClub("");
+        setEditingPlayerInternationalRosterIds(new Set());
         setEditingPlayerFirstError("");
         setEditingPlayerLastError("");
     }
@@ -468,8 +651,33 @@ export default function RosterDetailPage() {
             positions: editingPlayerPositions,
             photoUrl: editingPlayerPhotoUrl,
             nationality: editingPlayerNationality || undefined,
+            club: editingPlayerClub || undefined,
         });
-        setRosters(rosters.map((r) => (r.id === roster.id ? syncRosterCurrentSeason(updatedRoster) : r)));
+        const updatedPlayer = updatedRoster.players.find(p => p.id === editingPlayerId);
+        
+        // Pour joueur international: chercher l'effectif national correspondant au club
+        const linkedNationalRoster = isInternational && updatedPlayer?.club
+            ? rosters.find((r) =>
+                r.id !== roster.id &&
+                r.category &&
+                getCompetitionScope(r.category) === "national" &&
+                normalizeClubEntityName(r.name) === normalizeClubEntityName(updatedPlayer.club) &&
+                (resolveRosterGender(r) === effectiveGender || resolveRosterGender(r) === "mixed")
+            )
+            : null;
+        
+        setRosters(rosters.map((r) => {
+            if (r.id === roster.id) return syncRosterCurrentSeason(updatedRoster);
+            // National: ajouter aux sélections internationales sélectionnées
+            if (!isInternational && updatedPlayer && editingPlayerInternationalRosterIds.has(r.id) && !r.players.some(p => p.id === editingPlayerId)) {
+                return addPlayerToRosterList(r, updatedPlayer);
+            }
+            // International: ajouter à l'effectif national correspondant
+            if (isInternational && updatedPlayer && linkedNationalRoster && r.id === linkedNationalRoster.id && !r.players.some(p => p.id === editingPlayerId)) {
+                return addPlayerToRosterList(r, updatedPlayer);
+            }
+            return r;
+        }));
         cancelEditPlayer();
         setPlayerMessage("Joueur modifié.");
     }
@@ -757,10 +965,10 @@ export default function RosterDetailPage() {
                     <button
                         className="sp-button sp-button-sm sp-button-blue"
                         onClick={addTeam}
-                        disabled={!matchDay}
+                        disabled={!canCreateComposition}
                     >
                         <FontAwesomeIcon icon={faPlus} className="mr-2" />
-                        Créer « {roster.name} {matchDay && `J${matchDay}`} »
+                        Créer « {roster.name}{compositionSuffix} »
                     </button>
                 )}
                 {compositionMessage && (
@@ -895,6 +1103,51 @@ export default function RosterDetailPage() {
                                     ))}
                                 </select>
                             </div>
+                            {isInternational ? (
+                                <>
+                                    <div className="sp-input-shell">
+                                        <label className="sp-input-label">Sélection</label>
+                                        <input className="sp-input-control opacity-60" value={roster.name} readOnly disabled />
+                                    </div>
+                                    <div className="sp-input-shell">
+                                        <label className="sp-input-label" htmlFor="newPlayerClub">Club</label>
+                                        <select
+                                            id="newPlayerClub"
+                                            className="sp-input-control"
+                                            value={newPlayerClub}
+                                            onChange={(event) => setNewPlayerClub(event.target.value)}
+                                        >
+                                            <option value="">— Non renseigné —</option>
+                                            {clubOptions.map((c) => (
+                                                <option key={c.name} value={c.name}>{c.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </>
+                            ) : availableInternationalRosters.length > 0 && (
+                                <div className="sp-input-shell">
+                                    <label className="sp-input-label">Sélection(s) internationale(s) (facultatif)</label>
+                                    <div className="flex flex-col gap-1 pt-1">
+                                        {availableInternationalRosters.map((r) => (
+                                            <label key={r.id} className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                                                <input
+                                                    type="checkbox"
+                                                    className="accent-blue-500"
+                                                    checked={newPlayerInternationalRosterIds.has(r.id)}
+                                                    onChange={(e) => {
+                                                        setNewPlayerInternationalRosterIds((prev) => {
+                                                            const next = new Set(prev);
+                                                            if (e.target.checked) next.add(r.id); else next.delete(r.id);
+                                                            return next;
+                                                        });
+                                                    }}
+                                                />
+                                                {r.name}
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                             <div className="flex items-center justify-center gap-2">
                                 <button
                                     className="sp-button sp-button-sm sp-button-blue"
@@ -1035,6 +1288,45 @@ export default function RosterDetailPage() {
                                     ))}
                                 </select>
                             </div>
+                            {isInternational ? (
+                                <div className="sp-input-shell">
+                                    <label className="sp-input-label" htmlFor="editingPlayerClub">Club</label>
+                                    <select
+                                        id="editingPlayerClub"
+                                        className="sp-input-control"
+                                        value={editingPlayerClub}
+                                        onChange={(event) => setEditingPlayerClub(event.target.value)}
+                                    >
+                                        <option value="">— Non renseigné —</option>
+                                        {clubOptions.map((c) => (
+                                            <option key={c.name} value={c.name}>{c.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            ) : availableInternationalRosters.length > 0 && (
+                                <div className="sp-input-shell">
+                                    <label className="sp-input-label">Sélection(s) internationale(s) (facultatif)</label>
+                                    <div className="flex flex-col gap-1 pt-1">
+                                        {availableInternationalRosters.map((r) => (
+                                            <label key={r.id} className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                                                <input
+                                                    type="checkbox"
+                                                    className="accent-blue-500"
+                                                    checked={editingPlayerInternationalRosterIds.has(r.id)}
+                                                    onChange={(e) => {
+                                                        setEditingPlayerInternationalRosterIds((prev) => {
+                                                            const next = new Set(prev);
+                                                            if (e.target.checked) next.add(r.id); else next.delete(r.id);
+                                                            return next;
+                                                        });
+                                                    }}
+                                                />
+                                                {r.name}
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                             <div className="flex items-center justify-center gap-2">
                                 <button
                                     className="sp-button sp-button-sm sp-button-blue h-36px"
@@ -1107,6 +1399,62 @@ export default function RosterDetailPage() {
                     </p>
                 )}
             </section>
+
+            {/* Modal doublon — joueur existant détecté */}
+            {duplicateCandidate && (
+                <div
+                    className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 px-4"
+                    onClick={dismissDuplicateModal}
+                >
+                    <div
+                        className="w-full max-w-md flex flex-col gap-4 rounded-md border border-amber-600 bg-neutral-900 px-4 py-4"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <h3 className="font-semibold text-amber-300">Joueur déjà enregistré</h3>
+                        <p className="text-sm text-neutral-300">
+                            Un joueur nommé <strong className="text-white">{duplicateCandidate.name}</strong> existe déjà dans le registre.
+                        </p>
+                        <div className="rounded border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm space-y-1">
+                            {duplicateCandidate.positions.length > 0 && (
+                                <p className="text-neutral-400">Postes : {duplicateCandidate.positions.join(" / ")}</p>
+                            )}
+                            {duplicateCandidate.nationality && (
+                                <p className="text-neutral-400">
+                                    Nationalité :&nbsp;
+                                    <img src={getFlagUrl(duplicateCandidate.nationality)} alt={duplicateCandidate.nationality} className="inline h-3 mr-1" />
+                                    {duplicateCandidate.nationality}
+                                </p>
+                            )}
+                            {duplicateCandidate.club && (
+                                <p className="text-neutral-400">Club : {duplicateCandidate.club}</p>
+                            )}
+                        </div>
+                        <p className="text-sm text-neutral-400">
+                            Souhaitez-vous ajouter ce joueur existant à l'effectif <strong className="text-white">{roster.name}</strong>, ou créer un nouveau profil distinct ?
+                        </p>
+                        <div className="flex flex-wrap gap-2 justify-end">
+                            <button
+                                className="sp-button sp-button-sm sp-button-blue"
+                                onClick={confirmUseExistingPlayer}
+                            >
+                                Utiliser le joueur existant
+                            </button>
+                            <button
+                                className="sp-button sp-button-sm sp-button-light"
+                                onClick={confirmCreateNewPlayer}
+                            >
+                                Créer un nouveau profil
+                            </button>
+                            <button
+                                className="sp-button sp-button-sm sp-button-neutral"
+                                onClick={dismissDuplicateModal}
+                            >
+                                Annuler
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </main>
     );
 }
