@@ -1,3 +1,27 @@
+export type Championship = 'Top 14' | 'Pro D2' | 'Elite 1' | "Women's Six Nations" | 'World Series';
+
+export type CompetitionScope = 'national' | 'international';
+export type CompetitionGender = 'masculine' | 'feminine' | 'mixed';
+
+export const NATIONAL_CHAMPIONSHIPS: readonly Championship[] = ['Top 14', 'Pro D2', 'Elite 1'] as const;
+export const INTERNATIONAL_CHAMPIONSHIPS: readonly Championship[] = ["Women's Six Nations", 'World Series'] as const;
+
+export const MASCULINE_CHAMPIONSHIPS: readonly Championship[] = ['Top 14', 'Pro D2'] as const;
+export const FEMININE_CHAMPIONSHIPS: readonly Championship[] = ['Elite 1', "Women's Six Nations"] as const;
+export const MIXED_CHAMPIONSHIPS: readonly Championship[] = ['World Series'] as const;
+
+export function getCompetitionScope(championship: string | undefined): CompetitionScope {
+    return INTERNATIONAL_CHAMPIONSHIPS.includes(championship as Championship)
+        ? 'international'
+        : 'national';
+}
+
+export function getCompetitionGender(championship: string | undefined): CompetitionGender {
+    if (FEMININE_CHAMPIONSHIPS.includes(championship as Championship)) return 'feminine';
+    if (MIXED_CHAMPIONSHIPS.includes(championship as Championship)) return 'mixed';
+    return 'masculine';
+}
+
 export const PLAYER_POSITIONS = [
     "première ligne",
     "talonneur",
@@ -23,6 +47,8 @@ export interface PlayerStats {
     titularisations2526: number;
 }
 
+export type PlayerGender = 'male' | 'female';
+
 export interface Player {
     id: string;
     name: string;
@@ -31,7 +57,11 @@ export interface Player {
     photoUrl?: string;
     nationality?: string; // ISO 3166-1 alpha-2 code
     club?: string;
+    gender?: PlayerGender;
     stats?: PlayerStats;
+    nationalRosterId?: string;        // FK → Roster.id (club national)
+    internationalRosterIds?: string[]; // FK[] → Roster.id (sélections internationales — W6N, World Series…)
+    rosterIds?: string[];             // tous les effectifs auxquels appartient ce joueur
 }
 
 export interface CompositionEntry {
@@ -44,6 +74,7 @@ export interface Coach {
     photoUrl?: string;
     nationality?: string; // ISO 3166-1 alpha-2 code
     club?: Team["name"];
+    federation?: string; // e.g. "FFR"
 }
 
 export interface President {
@@ -51,10 +82,11 @@ export interface President {
     photoUrl?: string;
     nationality?: string; // ISO 3166-1 alpha-2 code
     club?: Team["name"];
+    federation?: string; // e.g. "FFR"
 }
 
 export interface Title {
-    competition: 'Top 14' | 'Pro D2 | Coupe d\'Europe' | 'Challenge Cup' | string;
+    competition: 'Top 14' | 'Pro D2 | Coupe d\'Europe' | 'Challenge Cup' | 'Elite 1' | 'Six Nations' | "Women's Six Nations" | 'World Series' | 'World Championship' | string;
     ranking: 'Vainqueur' | 'Finaliste' | string;
     year: number;
 }
@@ -84,6 +116,8 @@ export interface SeasonData {
     players: Player[];
     coach?: string;
     calendar?: MatchFixture[];
+    ranking?: number;  // classement final de la saison
+    points?: number;   // points en fin de saison
 }
 
 export const CURRENT_SEASON = "2025/2026";
@@ -101,7 +135,8 @@ export interface Roster {
     presidentData?: President;
     players: Player[]; // effectif global (mirrors current season)
     seasons?: Record<string, SeasonData>;
-    category?: 'Top 14' | 'Pro D2';
+    category?: 'Top 14' | 'Pro D2' | 'Elite 1' | 'Women\'s Six Nations' | 'World Series';
+    gender?: PlayerGender;   // précise le genre quand la catégorie ne le détermine pas (ex : World Series)
     founded_in?: number; // year of creation
     titles?: Title[]; // list of titles won
     currentRanking?: number; // current league ranking

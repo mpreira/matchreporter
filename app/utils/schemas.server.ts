@@ -122,7 +122,7 @@ export const rosterStatePayloadSchema = z.object({
   matchDay: z.string().optional(),
   season: z.string().optional(),
   sport: z.enum(["Rugby", "Football"]).optional(),
-  championship: z.enum(["Top 14", "Pro D2"]).optional(),
+  championship: z.enum(["Top 14", "Pro D2", "Elite 1", "Women's Six Nations", "World Series"]).optional(),
 });
 
 // POST /api/account — discriminated union by intent

@@ -68,6 +68,9 @@ export default function Tracker() {
         resetClock,
     } = useTrackerClock();
     const { rosters, teams, activeRosterId, matchDay, championship, sport } = useTeams();
+    const normalizedMatchDay = matchDay.trim();
+    const parsedMatchDay = normalizedMatchDay.match(/^J?\s*(\d+)$/i);
+    const matchDayLabel = parsedMatchDay ? `J${parsedMatchDay[1]}` : normalizedMatchDay;
     
     const activeRoster = useMemo(() => rosters.find((r) => r.id === activeRosterId) ?? null, [rosters, activeRosterId]);
     
@@ -76,15 +79,15 @@ export default function Tracker() {
         [rosters]
     );
     
-    // Si une journée est sélectionnée, on ne garde que les équipes correspondant à cette journée
-    // (leur nom contient "J{matchDay}"). On y injecte aussi le surnom de l'effectif associé.
+    // Si un contexte de match est sélectionné, on filtre les équipes sur ce libellé (ex: J3 ou Bordeaux)
+    // puis on y injecte le surnom de l'effectif associé.
     const teamsForDay = useMemo(
-        () => matchDay
+        () => matchDayLabel
             ? teams
-                .filter((t) => t.name.includes(`J${matchDay}`))
+                .filter((t) => t.name.includes(matchDayLabel))
                 .map((team) => ({ ...team, nickname: team.nickname || rosterNicknameById.get(team.rosterId) || undefined }))
             : teams.map((team) => ({ ...team, nickname: team.nickname || rosterNicknameById.get(team.rosterId) || undefined })),
-        [teams, matchDay, rosterNicknameById]
+        [teams, matchDayLabel, rosterNicknameById]
     );
     
     const [team1Id, setTeam1Id] = useState<string>("");
@@ -480,7 +483,7 @@ export default function Tracker() {
         <main className="sp-page space-y-6">
             <h1 className="leading-[0.95] font-bold tracking-[-0.03em] text-4xl text-center text-white">Feuille de match</h1>
             <p className="text-foreground max-w-3xl text-base font-light text-white text-balance sm:text-lg text-center mx-auto">
-                {matchDay && <>Journée : {matchDay} — </>}
+                {matchDayLabel && <>{matchDayLabel} — </>}
                 Championnat : {championship}
             </p>
             <div className="sp-input-shell max-w-3xl mx-auto mb-8">

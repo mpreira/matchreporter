@@ -8,14 +8,15 @@ function sortEntriesByNumber(entries: CompositionEntry[]): CompositionEntry[] {
 // Roster Operations
 export function createNewRoster(
     name: string,
-    category: 'Top 14' | 'Pro D2',
+    category: 'Top 14' | 'Pro D2' | 'Elite 1' | 'Women\'s Six Nations' | 'World Series',
     nickname?: string,
     color?: string,
     logo?: string,
     coach?: string,
     president?: string,
     founded_in?: number,
-    titlesText?: string
+    titlesText?: string,
+    gender?: 'male' | 'female'
 ): Roster {
     return {
         id: uuidv4(),
@@ -27,6 +28,7 @@ export function createNewRoster(
         president,
         players: [],
         category,
+        gender,
         founded_in,
         titles: titlesText
             ? titlesText.split("\n").filter((l) => l.trim()).map((line) => {
@@ -68,7 +70,14 @@ export function deletePlayerFromRoster(roster: Roster, playerId: string): Roster
 export function updatePlayerInRoster(
     roster: Roster,
     playerId: string,
-    updates: { name: string; positions?: PlayerPosition[]; photoUrl?: string; nationality?: string }
+    updates: {
+        name: string;
+        positions?: PlayerPosition[];
+        photoUrl?: string;
+        nationality?: string;
+        club?: string;
+        nationalRosterId?: string;
+    }
 ): Roster {
     return {
         ...roster,
@@ -83,7 +92,8 @@ export function createPlayerFromNames(
     last: string,
     positions?: PlayerPosition[],
     photoUrl?: string,
-    nationality?: string
+    nationality?: string,
+    club?: string
 ): Player {
     const name = `${first} ${last}`.trim();
     return {
@@ -92,6 +102,7 @@ export function createPlayerFromNames(
         positions: positions && positions.length > 0 ? positions : undefined,
         photoUrl: photoUrl?.trim() ? photoUrl.trim() : undefined,
         nationality: nationality?.trim() ? nationality.trim() : undefined,
+        club: club?.trim() ? club.trim() : undefined,
     };
 }
 
