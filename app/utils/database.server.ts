@@ -7,6 +7,7 @@ import type { Roster, Team } from "~/types/tracker";
 import { getCompetitionScope, getCompetitionGender } from "~/types/tracker";
 import { rosterStatePayloadSchema } from "~/utils/schemas.server";
 import { ALL_CLUBS } from "~/utils/clubs";
+import { FRANCE_W6N_SQUAD_2025_2026 } from "~/utils/france-w6n-squad";
 
 type Sport = "Rugby" | "Football";
 type Championship = "Top 14" | "Pro D2" | "Elite 1" | "Women's Six Nations" | "World Series";
@@ -1444,6 +1445,75 @@ async function seedDefaultRosters(pool: Pool): Promise<void> {
   await syncRosterDataToTables(pool, LEGACY_ACCOUNT_ID, payload);
 }
 
+/**
+ * Pour chaque compte ayant au moins un effectif Women's Six Nations,
+ * ajoute les joueuses du XV de France Féminin manquantes (contrôle doublon
+ * par nom normalisé). Ne crée pas de nouveau roster — se greffe sur
+ * les rosters W6N existants.
+ */
+async function seedFranceW6NPlayers(pool: Pool): Promise<void> {
+  // Uniquement pour les comptes enregistrés — exclut le compte legacy
+  // (usage non-authentifié) et les scopes anonymes (préfixe "anon:").
+  const accounts = await pool.query<{ account_id: string }>(
+    `SELECT DISTINCT account_id FROM stored_rosters
+     WHERE category = $1
+       AND account_id != $2
+       AND account_id NOT LIKE $3`,
+    ["Women's Six Nations", LEGACY_ACCOUNT_ID, `${ANONYMOUS_SCOPE_PREFIX}%`]
+  );
+  if (accounts.rows.length === 0) return;
+
+  for (const { account_id } of accounts.rows) {
+    const stateResult = await pool.query<{ payload: string }>(
+      `SELECT payload FROM account_rosters_state WHERE account_id = $1`,
+      [account_id]
+    );
+    if (!stateResult.rows[0]) continue;
+
+    const state = parseJsonOrNull<RosterStatePayload>(stateResult.rows[0].payload);
+    if (!state) continue;
+
+    let changed = false;
+    const updatedRosters = state.rosters.map((roster) => {
+      if (roster.category !== "Women's Six Nations") return roster;
+
+      const existingNames = new Set(
+        (roster.players ?? []).map((p) => p.name.trim().toLowerCase())
+      );
+
+      const toAdd = FRANCE_W6N_SQUAD_2025_2026.filter(
+        (sp) => !existingNames.has(sp.name.toLowerCase())
+      ).map((sp) => ({
+        id: crypto.randomUUID(),
+        name: sp.name,
+        positions: sp.positions,
+        nationality: sp.nationality,
+        gender: sp.gender,
+      }));
+
+      if (toAdd.length === 0) return roster;
+
+      changed = true;
+      console.log(
+        `[seed] W6N roster "${roster.name}" (compte ${account_id}) : ajout de ${toAdd.length} joueuse(s)…`
+      );
+      return { ...roster, players: [...(roster.players ?? []), ...toAdd] };
+    });
+
+    if (!changed) continue;
+
+    const updatedState = { ...state, rosters: updatedRosters };
+    const now = new Date().toISOString();
+    await pool.query(
+      `UPDATE account_rosters_state
+       SET payload = $2, updated_at = $3
+       WHERE account_id = $1`,
+      [account_id, JSON.stringify(updatedState), now]
+    );
+    await syncRosterDataToTables(pool, account_id, updatedState);
+  }
+}
+
 async function ensureInitialized() {
   if (initializationPromise) {
     await initializationPromise;
@@ -1457,6 +1527,7 @@ async function ensureInitialized() {
     await backfillStructuredTables(pool);
     await seedDefaultRosters(pool);
     await ensureTestAccount(pool);
+    await seedFranceW6NPlayers(pool);
   })();
 
   await initializationPromise;
