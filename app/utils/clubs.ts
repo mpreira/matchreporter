@@ -50,7 +50,7 @@ export const PROD2_CLUBS_2025_2026: ClubInfo[] = [
 /** Classement Elite 1 Féminine — saison 2025/2026 (source : Mon Club House FFR, 10 juin 2026) */
 export const ELITE1_CLUBS_2025_2026: ClubInfo[] = [
   { name: "ASM Romagnat Rugby Féminin",               nickname: "ASMR", color: "#FFCC00", category: "Elite 1", currentRanking: 1,  currentPoints: 83 },
-  { name: "Stade Toulousain Rugby Féminin",            nickname: "STF",  color: "#B3151B", category: "Elite 1", currentRanking: 2,  currentPoints: 82 },
+  { name: "Stade Toulousain",                          nickname: "STF",  color: "#B3151B", category: "Elite 1", currentRanking: 2,  currentPoints: 82 },
   { name: "Stade Bordelais",                           nickname: "SBF",  color: "#3A7D44", category: "Elite 1", currentRanking: 3,  currentPoints: 73 },
   { name: "Blagnac Sporting Club Rugby",               nickname: "BSC",  color: "#003087", category: "Elite 1", currentRanking: 4,  currentPoints: 52 },
   { name: "Montpellier Hérault Rugby Féminin",         nickname: "MHRF", color: "#001F5B", category: "Elite 1", currentRanking: 5,  currentPoints: 38 },

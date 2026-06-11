@@ -48,6 +48,13 @@ function getRosterBackPath(rosterId: string | null | undefined): string {
   return `/r/${rosterId}`;
 }
 
+function normalizeClubEntityName(name: string | null | undefined): string {
+  const value = (name ?? "").trim();
+  if (!value) return "";
+  if (value === "Stade Toulousain Rugby Féminin") return "Stade Toulousain";
+  return value;
+}
+
 export default function PlayerProfilePage() {
   const { rosterId: shortRosterId, playerId: shortPlayerId } = useParams();
   const { rosters, teams, setRosters } = useTeams();
@@ -165,11 +172,11 @@ export default function PlayerProfilePage() {
   // National roster matching the player's club (gender-aware)
   const clubLinkedNationalRoster = useMemo(() => {
     if (!player?.club || !roster) return null;
-    const club = player.club.trim();
+    const club = normalizeClubEntityName(player.club);
     // For international rosters: find the national roster with this name, filtered by gender
     if (isInternational) {
       return rosters.find((r) =>
-        r.name === club &&
+        normalizeClubEntityName(r.name) === club &&
         r.id !== rosterId &&
         getCompetitionScope(r.category) === 'national' &&
         (getCompetitionGender(r.category) === rosterGender || getCompetitionGender(r.category) === 'mixed')
@@ -212,20 +219,21 @@ export default function PlayerProfilePage() {
 
   function saveInfo() {
     if (!roster || !player) return;
+    const normalizedClubName = normalizeClubEntityName(infoClubDraft) || undefined;
     const updatedRoster = updatePlayerInRoster(roster, player.id, {
       name: player.name,
       positions: player.positions,
       photoUrl: player.photoUrl,
       nationality: player.nationality,
-      club: infoClubDraft || undefined,
+      club: normalizedClubName,
     });
     const playerWithClub = updatedRoster.players.find(p => p.id === player.id);
-    const newClub = infoClubDraft.trim();
+    const newClub = normalizeClubEntityName(infoClubDraft);
     // Gender-aware: only match national roster with same name AND compatible gender
     const matchingNationalRoster = isInternational && newClub && playerWithClub
       ? rosters.find((r) =>
           r.id !== roster.id &&
-          r.name === newClub &&
+          normalizeClubEntityName(r.name) === newClub &&
           getCompetitionScope(r.category) === 'national' &&
           (getCompetitionGender(r.category) === rosterGender || getCompetitionGender(r.category) === 'mixed') &&
           !r.players.some((p) => p.id === player.id)
@@ -280,9 +288,11 @@ export default function PlayerProfilePage() {
                 className="sp-button sp-button-xs sp-button-indigo"
                 onClick={() => {
                   // Pre-select the current club roster if one matches
-                  const currentClubRoster = nationalClubRosters.find(r => r.name === player.club);
+                  const currentClubRoster = nationalClubRosters.find(
+                    (r) => normalizeClubEntityName(r.name) === normalizeClubEntityName(player.club)
+                  );
                   setInfoClubRosterId(currentClubRoster?.id ?? "");
-                  setInfoClubDraft(player.club ?? "");
+                  setInfoClubDraft(normalizeClubEntityName(player.club));
                   setIsEditingInfo(true);
                   setInfoMessage("");
                 }}
@@ -360,7 +370,9 @@ export default function PlayerProfilePage() {
               />
             ) : (
               <p className="text-sm text-neutral-200">
-                {player.club ?? <span className="text-neutral-500 italic">Non renseigné</span>}
+                {player.club
+                  ? normalizeClubEntityName(player.club)
+                  : <span className="text-neutral-500 italic">Non renseigné</span>}
               </p>
             )}
           </div>
@@ -381,7 +393,7 @@ export default function PlayerProfilePage() {
         <section className="sp-panel space-y-3 border-amber-700/50">
           <h2 className="font-semibold text-amber-300">Synchronisation effectif club</h2>
           <p className="text-sm text-neutral-300">
-            Le club <strong>{player.club}</strong> est renseigné mais{" "}
+            Le club <strong>{normalizeClubEntityName(player.club)}</strong> est renseigné mais{" "}
             <strong>{player.name}</strong> ne figure pas encore dans l&apos;effectif{" "}
             <strong>{clubLinkedNationalRoster.name}</strong>.
           </p>
