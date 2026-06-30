@@ -121,13 +121,16 @@ function AppContent() {
 
   return (
     <>
-      <div className={isHome ? "h-dvh w-full max-w-full overflow-x-hidden xl:pl-72" : "min-h-screen w-full max-w-full overflow-x-hidden pb-[calc(7.5rem+env(safe-area-inset-bottom))] xl:pl-72 xl:pb-10"}>
-        <Outlet />
+      <div className={isHome ? "flex h-dvh w-full max-w-full flex-col overflow-hidden xl:pl-72" : "flex h-dvh w-full max-w-full flex-col overflow-hidden xl:pl-72"}>
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <Outlet />
+        </div>
+        {!isHome && (
+          <footer className="pointer-events-none shrink-0 px-4 py-2 text-center text-[10px] uppercase tracking-wide text-neutral-600 xl:py-3">
+            © {new Date().getFullYear()} Match Reporter
+          </footer>
+        )}
       </div>
-
-      <footer className="pointer-events-none px-4 pb-[calc(5.25rem+env(safe-area-inset-bottom))] text-center text-[10px] uppercase tracking-wide text-neutral-600 xl:pb-6 xl:pl-72">
-        © {new Date().getFullYear()} Match Reporter
-      </footer>
 
       <ScrollPageControls />
 
@@ -147,7 +150,7 @@ function AppContent() {
             </div>
           </div>
 
-          <div className="mt-4 flex flex-1 flex-col gap-2 overflow-y-auto">
+          <div className="sp-no-scrollbar mt-4 flex flex-1 flex-col gap-2 overflow-y-auto">
             {resolvedNavigationItems.map((item) => (
               <a
                 key={item.label}
