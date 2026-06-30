@@ -450,8 +450,8 @@ export default function PlayerProfilePage() {
                   <p className="text-sm text-neutral-200">
                     <strong>Ajouter à une sélection internationale :</strong>
                   </p>
-                  <div className="flex items-end gap-2 flex-wrap">
-                    <div className="sp-input-shell flex-1 min-w-[12rem]">
+                  <div className="sp-row-responsive">
+                    <div className="sp-input-shell w-full flex-1 min-w-0 sm:min-w-[12rem]">
                       <label className="sp-input-label" htmlFor="nationalRosterSelectInline">
                         Sélection
                       </label>
@@ -475,7 +475,7 @@ export default function PlayerProfilePage() {
                     </div>
                     <button
                       type="button"
-                      className="sp-button sp-button-sm sp-button-blue"
+                      className="sp-button sp-button-sm sp-button-blue w-full sm:w-auto"
                       disabled={!selectedNationalRosterId}
                       onClick={addToInternationalRoster}
                     >

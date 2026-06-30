@@ -83,7 +83,7 @@ export function Welcome() {
             />
           </div>
           {/* reglages de journee/championnat */}
-          <form className="mx-auto w-5/6 max-w-sm space-y-3 text-left mb-8 lg:mb-16 md:w-full" onSubmit={handleSubmit}>
+          <form className="mx-auto mb-8 w-full max-w-sm space-y-3 px-2 text-left sm:w-11/12 md:w-full lg:mb-16" onSubmit={handleSubmit}>
             <div className="sp-input-shell">
               <label className="sp-input-label" htmlFor="sportSelect">Sport</label>
               <select

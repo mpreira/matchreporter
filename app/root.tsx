@@ -121,11 +121,11 @@ function AppContent() {
 
   return (
     <>
-      <div className={isHome ? "h-dvh w-full max-w-full overflow-x-hidden xl:pl-72" : "min-h-screen w-full max-w-full overflow-x-hidden pb-32 xl:pl-72 xl:pb-10"}>
+      <div className={isHome ? "h-dvh w-full max-w-full overflow-x-hidden xl:pl-72" : "min-h-screen w-full max-w-full overflow-x-hidden pb-[calc(7.5rem+env(safe-area-inset-bottom))] xl:pl-72 xl:pb-10"}>
         <Outlet />
       </div>
 
-      <footer className="pointer-events-none px-4 pb-20 text-center text-[10px] uppercase tracking-wide text-neutral-600 xl:pb-6 xl:pl-72">
+      <footer className="pointer-events-none px-4 pb-[calc(5.25rem+env(safe-area-inset-bottom))] text-center text-[10px] uppercase tracking-wide text-neutral-600 xl:pb-6 xl:pl-72">
         © {new Date().getFullYear()} Match Reporter
       </footer>
 
@@ -168,7 +168,7 @@ function AppContent() {
                 title={item.active ? item.label : `${item.label} (bientôt)`}
               >
                 <span
-                  className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition-colors ${
+                  className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl border leading-none transition-colors ${
                     item.active
                       ? item.isSelected
                         ? "border-blue-500 bg-blue-500/20"
@@ -176,7 +176,7 @@ function AppContent() {
                       : "border-neutral-800 bg-neutral-900/60"
                   }`}
                 >
-                  <FontAwesomeIcon className="text-base" icon={item.icon} />
+                  <FontAwesomeIcon fixedWidth className="block text-base" icon={item.icon} />
                 </span>
                 <span className="min-w-0 truncate font-medium">{item.label}</span>
               </a>
@@ -185,9 +185,9 @@ function AppContent() {
         </div>
       </nav>
 
-      <nav className="fixed inset-x-0 bottom-3 z-50 px-3 xl:hidden">
+      <nav className="fixed inset-x-0 bottom-2 z-50 px-2 pb-[env(safe-area-inset-bottom)] xl:hidden">
         <div className="mx-auto max-w-screen-md">
-          <div className="flex items-start justify-between gap-1 rounded-3xl border border-gray-700 bg-neutral-950/95 px-2 py-2 backdrop-blur supports-[backdrop-filter]:bg-neutral-950/80">
+          <div className="sp-no-scrollbar flex items-stretch justify-start gap-1.5 overflow-x-auto rounded-3xl border border-gray-700 bg-neutral-950/95 px-2 py-2 backdrop-blur supports-[backdrop-filter]:bg-neutral-950/80 md:justify-between md:overflow-x-visible">
             {resolvedNavigationItems.map((item) => {
               return (
                 <a
@@ -199,7 +199,7 @@ function AppContent() {
                       event.preventDefault();
                     }
                   }}
-                  className={`flex flex-1 min-w-0 flex-col items-center justify-start gap-1 py-1 text-[11px] leading-none transition-colors md:text-[13px] ${
+                  className={`flex min-w-[4.5rem] shrink-0 flex-col items-center justify-center gap-1 py-1 text-[10px] leading-none transition-colors sm:min-w-[5rem] sm:text-[11px] md:min-w-0 md:flex-1 ${
                     item.active
                       ? item.isSelected
                         ? "text-blue-400"
@@ -209,7 +209,7 @@ function AppContent() {
                   title={item.active ? item.label : `${item.label} (bientôt)`}
                 >
                   <span
-                    className={`flex h-10 w-10 items-center justify-center rounded-full border transition-colors md:h-12 md:w-12 ${
+                    className={`grid h-9 w-9 place-items-center rounded-full border leading-none transition-colors sm:h-10 sm:w-10 ${
                       item.active
                         ? item.isSelected
                           ? "border-blue-500/70 bg-blue-500/15"
@@ -217,9 +217,9 @@ function AppContent() {
                         : "border-gray-800 bg-neutral-900/60"
                     }`}
                   >
-                    <FontAwesomeIcon className="text-base md:text-lg" icon={item.icon} />
+                    <FontAwesomeIcon fixedWidth className="block text-sm sm:text-base" icon={item.icon} />
                   </span>
-                  <span className="hidden text-center md:block">{item.label}</span>
+                  <span className="w-full max-w-full truncate text-center">{item.label}</span>
                 </a>
               );
             })}
