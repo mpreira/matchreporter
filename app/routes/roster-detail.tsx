@@ -97,6 +97,7 @@ export default function RosterDetailPage() {
         setTeams,
         setActiveRosterId,
         matchDay,
+        championship,
     } = useTeams();
 
     const [showAddPlayerForm, setShowAddPlayerForm] = useState(false);
@@ -236,7 +237,8 @@ export default function RosterDetailPage() {
         ? (hasWorldSeriesStage ? ` - ${worldSeriesStageLabel}` : "")
         : (hasNumericMatchDay ? ` J${matchDayNumber}` : "");
     const compositionName = roster && compositionSuffix ? `${roster.name}${compositionSuffix}` : null;
-    const canCreateComposition = isWorldSeriesRoster ? hasWorldSeriesStage : hasNumericMatchDay;
+    const isChampionshipAllowed = roster ? roster.category === championship : false;
+    const canCreateComposition = (isWorldSeriesRoster ? hasWorldSeriesStage : hasNumericMatchDay) && isChampionshipAllowed;
     const hasCompositionForDay = Boolean(
         compositionName && rosterTeams.some((team) => team.name === compositionName)
     );
@@ -325,7 +327,7 @@ export default function RosterDetailPage() {
     }
 
     function addTeam() {
-        if (!roster) return;
+        if (!roster || !canCreateComposition) return;
         const name = compositionName ?? roster.name;
         const newTeam = createTeam(name, roster.id, roster.nickname, roster.color, roster.logo);
         setTeams([...(teams || []), newTeam]);
@@ -990,6 +992,7 @@ export default function RosterDetailPage() {
                         className="sp-button sp-button-sm sp-button-blue"
                         onClick={addTeam}
                         disabled={!canCreateComposition}
+                        title={!isChampionshipAllowed ? `Championnat sélectionné: ${championship}. Création verrouillée pour ${roster.category}.` : undefined}
                     >
                         <FontAwesomeIcon icon={faPlus} className="mr-2" />
                         Créer « {roster.name}{compositionSuffix} »
