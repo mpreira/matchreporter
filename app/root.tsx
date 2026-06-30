@@ -122,14 +122,14 @@ function AppContent() {
   return (
     <>
       <div className={isHome ? "flex h-dvh w-full max-w-full flex-col overflow-hidden xl:pl-72" : "flex h-dvh w-full max-w-full flex-col overflow-hidden xl:pl-72"}>
-        <div className="flex-1 min-h-0 overflow-hidden">
+        <div className={isHome ? "flex-1 min-h-0 overflow-hidden" : "flex-1 min-h-0 overflow-y-auto overflow-x-hidden pb-[calc(12rem+env(safe-area-inset-bottom))] sm:pb-[calc(14rem+env(safe-area-inset-bottom))]"}>
           <Outlet />
+          {!isHome && (
+            <footer className="pointer-events-none px-4 py-4 text-center text-[10px] uppercase tracking-wide text-neutral-600 sm:py-5 xl:py-6">
+              © {new Date().getFullYear()} Match Reporter
+            </footer>
+          )}
         </div>
-        {!isHome && (
-          <footer className="pointer-events-none shrink-0 px-4 py-2 text-center text-[10px] uppercase tracking-wide text-neutral-600 xl:py-3">
-            © {new Date().getFullYear()} Match Reporter
-          </footer>
-        )}
       </div>
 
       <ScrollPageControls />
