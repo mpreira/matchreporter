@@ -97,6 +97,7 @@ export default function RosterDetailPage() {
         setTeams,
         setActiveRosterId,
         matchDay,
+        championship,
     } = useTeams();
 
     const [showAddPlayerForm, setShowAddPlayerForm] = useState(false);
@@ -236,7 +237,8 @@ export default function RosterDetailPage() {
         ? (hasWorldSeriesStage ? ` - ${worldSeriesStageLabel}` : "")
         : (hasNumericMatchDay ? ` J${matchDayNumber}` : "");
     const compositionName = roster && compositionSuffix ? `${roster.name}${compositionSuffix}` : null;
-    const canCreateComposition = isWorldSeriesRoster ? hasWorldSeriesStage : hasNumericMatchDay;
+    const isChampionshipAllowed = roster ? roster.category === championship : false;
+    const canCreateComposition = (isWorldSeriesRoster ? hasWorldSeriesStage : hasNumericMatchDay) && isChampionshipAllowed;
     const hasCompositionForDay = Boolean(
         compositionName && rosterTeams.some((team) => team.name === compositionName)
     );
@@ -325,7 +327,7 @@ export default function RosterDetailPage() {
     }
 
     function addTeam() {
-        if (!roster) return;
+        if (!roster || !canCreateComposition) return;
         const name = compositionName ?? roster.name;
         const newTeam = createTeam(name, roster.id, roster.nickname, roster.color, roster.logo);
         setTeams([...(teams || []), newTeam]);
@@ -990,6 +992,7 @@ export default function RosterDetailPage() {
                         className="sp-button sp-button-sm sp-button-blue"
                         onClick={addTeam}
                         disabled={!canCreateComposition}
+                        title={!isChampionshipAllowed ? `Championnat sélectionné: ${championship}. Création verrouillée pour ${roster.category}.` : undefined}
                     >
                         <FontAwesomeIcon icon={faPlus} className="mr-2" />
                         Créer « {roster.name}{compositionSuffix} »
@@ -1376,7 +1379,7 @@ export default function RosterDetailPage() {
                         ) : (
                             <ul className="space-y-4 mt-6">
                                 {sortedRosterPlayers.map((player) => (
-                                    <li key={player.id} className="bg-neutral-900 border border-neutral-800 text-base font-semibold w-5/6 mx-auto px-4 space-y-6 mb-2 py-2">
+                                    <li key={player.id} className="sp-list-card mb-2 space-y-6 py-2">
                                         <div className="flex items-center justify-between gap-2">
                                             <div className="min-w-0">
                                                 <Link to={getPlayerProfilePath(player.id)} className="text-white font-semibold hover:underline">
