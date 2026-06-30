@@ -804,7 +804,7 @@ export default function RosterManager({
                                 {r.nickname && <span className={`block text-xs ${r.category === 'World Series' && r.gender === 'female' ? 'text-purple-400' : 'text-sky-300'}`}>{r.nickname}</span>}
                             </button>
                             <button
-                                className="sp-button sp-button-yellow sp-button-icon"
+                                className={`sp-button ${r.category === 'World Series' && r.gender === 'female' ? 'sp-button-gr-purple' : r.category === 'World Series' ? 'sp-button-gr-sky' : 'sp-button-yellow'} sp-button-icon`}
                                 onClick={() => openEditRosterForm(r)}
                                 aria-label={`Modifier ${r.name}`}
                             >

@@ -480,7 +480,7 @@ export default function Tracker() {
     }
 
     return (
-        <main className="sp-page space-y-6">
+        <main className="sp-page h-full overflow-y-auto overscroll-contain space-y-6 pb-40">
             <h1 className="leading-[0.95] font-bold tracking-[-0.03em] text-4xl text-center text-white">Feuille de match</h1>
             <p className="text-foreground max-w-3xl text-base font-light text-white text-balance sm:text-lg text-center mx-auto">
                 {matchDayLabel && <>{matchDayLabel} — </>}
