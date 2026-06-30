@@ -133,6 +133,14 @@ body {
     @apply bg-gradient-to-br from-amber-400 to-yellow-500 hover:from-amber-300 hover:to-yellow-400;
   }
 
+  .sp-button-gr-purple {
+    @apply bg-gradient-to-br from-purple-500 to-purple-700 hover:from-purple-400 hover:to-purple-600;
+  }
+
+  .sp-button-gr-sky {
+    @apply bg-gradient-to-br from-sky-500 to-cyan-500 hover:from-sky-400 hover:to-cyan-400;
+  }
+
   .sp-button-xs {
   }
 
