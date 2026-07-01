@@ -11,6 +11,7 @@ import TrackerStatsPanel from "~/components/TrackerStatsPanel";
 import TrackerTeamsPanel from "~/components/TrackerTeamsPanel";
 import Summary from "~/components/Summary";
 import Scoreboard from "~/components/Scoreboard";
+import TrackerSetupWizard from "~/components/TrackerSetupWizard";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowRotateLeft, faChartLine, faCheck, faListCheck, faPenToSquare, faTrophy, faUsers } from "@fortawesome/free-solid-svg-icons";
 import { useTeams } from "~/context/TeamsContext";
@@ -22,7 +23,7 @@ import { useLiveBroadcast } from "~/hooks/useLiveBroadcast";
 import { getTimelineMomentFromClock } from "~/utils/TimeUtils";
 import { Top14_Stadiums_2025_2026 } from "~/utils/stadiums";
 import TrackerNotesPanel from "~/components/TrackerNotesPanel";
-import { faCalendarDays, faClipboard, faHouse, faUser } from "@fortawesome/free-regular-svg-icons";
+import { faCalendarDays, faClipboard, faHouse, faUser, faEye } from "@fortawesome/free-regular-svg-icons";
 
 export function meta({}: Route.MetaArgs) {
     return [{ title: "Match Reporter" }];
@@ -611,131 +612,27 @@ export default function Tracker() {
 
     if (!isTrackerReady) {
         return (
-          <main className="sp-page min-h-0 space-y-5 pb-10">
-            <h1 className="leading-[0.95] font-bold tracking-[-0.03em] text-4xl text-center text-white">
-              Préparation du tracker
-            </h1>
-            <p className="text-foreground max-w-3xl text-base font-light text-white text-balance sm:text-lg text-center mx-auto">
-              <FontAwesomeIcon icon={faTrophy} className="sm:mr-1 mr-2" />
-              {championship} {matchDayLabel && <> — {matchDayLabel}</>}
-            </p>
-
-            {!activeRoster && (
-              <p className="text-red-600 text-center">
-                Aucun effectif actif. Allez sur la page « Effectifs » pour en sélectionner un ou en créer un.
-              </p>
-            )}
-
-            <form
-              className="mx-auto mb-0 w-full max-w-sm space-y-1.5 px-2 text-left sm:w-11/12 md:w-full lg:mb-0"
-              onSubmit={handleSetupSubmit}
-            >
-              <div className="sp-input-shell">
-                <label className="sp-input-label" htmlFor="trackerTeam1Select">
-                  Équipe 1
-                </label>
-                <select
-                  id="trackerTeam1Select"
-                  className="sp-input-control"
-                  value={team1Id}
-                  onChange={(e) => handleTeam1Change(e.target.value)}
-                >
-                  <option value="">-- Équipe 1 --</option>
-                  {teamsForDay.map((team) => (
-                    <option key={team.id} value={team.id}>
-                      {getDisplayTeamLabel(team)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="sp-input-shell">
-                <label className="sp-input-label" htmlFor="trackerTeam2Select">
-                  Équipe 2
-                </label>
-                <select
-                  id="trackerTeam2Select"
-                  className="sp-input-control"
-                  value={team2Id}
-                  onChange={(e) => handleTeam2Change(e.target.value)}
-                >
-                  <option value="">-- Équipe 2 --</option>
-                  {teamsForDay.map((team) => (
-                    <option key={team.id} value={team.id}>
-                      {getDisplayTeamLabel(team)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="sp-input-shell">
-                <label className="sp-input-label" htmlFor="trackerMatchDateInput">
-                  Date du match
-                </label>
-                <input
-                  id="trackerMatchDateInput"
-                  type="date"
-                  value={matchDateInput}
-                  onChange={(event) => setMatchDateInput(event.target.value)}
-                  className="sp-input-control"
-                />
-              </div>
-
-              <div className="sp-input-shell">
-                <label className="sp-input-label" htmlFor="trackerFieldInput">
-                  Terrain
-                </label>
-                <select
-                  id="trackerFieldInput"
-                  value={fieldInput}
-                  onChange={(event) => setFieldInput(event.target.value)}
-                  className="sp-input-control"
-                >
-                  <option value="">Selectionner un stade</option>
-                  {top14StadiumOptions.map((stadium) => (
-                    <option key={stadium} value={stadium}>
-                      {stadium}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="sp-input-shell">
-                <label className="sp-input-label" htmlFor="trackerRefereeInput">
-                  Arbitre
-                </label>
-                <input
-                  id="trackerRefereeInput"
-                  value={refereeInput}
-                  onChange={(event) => setRefereeInput(event.target.value)}
-                  placeholder="Nom de l'arbitre"
-                  className="sp-input-control"
-                />
-              </div>
-
-              {team1Id && team2Id && team1Id === team2Id && (
-                <p className="text-sm text-red-600">Équipe 1 et Équipe 2 doivent être différentes.</p>
-              )}
-
-              {teamsForDay.length === 0 && (
-                <p className="text-sm text-gray-600">Aucune composition pour cette journée.</p>
-              )}
-
-              <button
-                type="submit"
-                className="sp-button sp-button-md sp-button-full sp-button-blue"
-                disabled={!setupCanSubmit || teamsForDay.length === 0}
-              >
-                Valider et ouvrir le tracker
-              </button>
-
-              {saveMessage && (
-                <p className={`text-sm ${saveMessage.includes("✓") ? "text-green-400" : "text-red-500"}`}>
-                  {saveMessage}
-                </p>
-              )}
-            </form>
-          </main>
+          <TrackerSetupWizard
+            championship={championship}
+            matchDayLabel={matchDayLabel}
+            hasActiveRoster={!!activeRoster}
+            teamsForDay={teamsForDay}
+            team1Id={team1Id}
+            team2Id={team2Id}
+            matchDateInput={matchDateInput}
+            fieldInput={fieldInput}
+            refereeInput={refereeInput}
+            top14StadiumOptions={top14StadiumOptions}
+            setupCanSubmit={setupCanSubmit}
+            saveMessage={saveMessage}
+            onSubmit={handleSetupSubmit}
+            onTeam1Change={handleTeam1Change}
+            onTeam2Change={handleTeam2Change}
+            onMatchDateInputChange={setMatchDateInput}
+            onFieldInputChange={setFieldInput}
+            onRefereeInputChange={setRefereeInput}
+            getDisplayTeamLabel={getDisplayTeamLabel}
+          />
         );
     }
 
