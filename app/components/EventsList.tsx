@@ -96,44 +96,98 @@ export default function EventsList({ events, remove }: Props) {
     );
   }
 
+  function getMinuteBadgeClass(event: Event): string {
+    const type = event.type.toLowerCase();
+    if (type.includes("essai")) return "bg-emerald-600";
+    if (type.includes("transformation")) return "bg-blue-600";
+    if (type.includes("pénalité") || type.includes("drop")) return "bg-indigo-600";
+    if (type.includes("carton rouge")) return "bg-red-600";
+    if (type.includes("carton jaune")) return "bg-amber-500 text-black";
+    if (type.includes("carton orange")) return "bg-orange-500 text-black";
+    return "bg-neutral-700";
+  }
+
+  function renderEventContent(event: Event) {
+    if (event.summary) {
+      return renderSummaryEvent(event);
+    }
+
+    return (
+      <>
+        <div className="text-xs uppercase tracking-wide text-neutral-400">{getEventLabel(event)}</div>
+        <div className="text-sm text-white break-words">
+          {event.type !== "Arbitrage Vidéo" && event.player && (
+            <>
+              {isCardEvent(event.type) ? "Pour " : "De "}
+              <strong>{event.player.name}</strong>
+            </>
+          )}
+          {event.team && ` ${displayTeamName(event.team)}`}
+          {event.playerOut && event.playerIn && (
+            <>
+              {" — "}
+              <strong>{event.playerOutNumber ? `#${event.playerOutNumber} ` : ""}{event.playerOut.name}</strong>
+              {" -> "}
+              <strong>{event.playerInNumber ? `#${event.playerInNumber} ` : ""}{event.playerIn.name}</strong>
+            </>
+          )}
+          {event.concussion && " commotion"}
+        </div>
+      </>
+    );
+  }
+
   return (
-    <ul className="space-y-1">
-      {events.map((e, idx) => (
-        <li key={idx} className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-white">
-          <span className={`min-w-0 break-words${idx === 0 && flashGeneration !== null ? " new-event-flash" : ""}`}>
-            {e.summary ? (
-              renderSummaryEvent(e)
-            ) : (
-              <>
-                {formatEventTimeline(e)} - {getEventLabel(e)}
-                {e.type !== "Arbitrage Vidéo" && e.player && (
-                  <>
-                    {isCardEvent(e.type) ? " pour " : " de "}
-                    <strong>{e.player.name}</strong>
-                    
-                  </>
-                )}
-                {e.team && ` ${displayTeamName(e.team)}`}
-                {e.playerOut && e.playerIn && (
-                  <>
-                    {" — "}
-                    <strong>{e.playerOutNumber ? `#${e.playerOutNumber} ` : ""}{e.playerOut.name}</strong>
-                    {" → "}
-                    <strong>{e.playerInNumber ? `#${e.playerInNumber} ` : ""}{e.playerIn.name}</strong>
-                  </>
-                )}
-                {e.concussion && " 🚨 commotion"}
-              </>
-            )}
-          </span>
-          <button
-            className="sp-button sp-button-xs sp-button-red"
-            onClick={() => remove(idx)}
-          >
-            <FontAwesomeIcon icon={faTrashCan} className="mr-1" />
-          </button>
-        </li>
-      ))}
+    <ul className="relative space-y-3">
+      <div className="pointer-events-none absolute left-4 top-0 bottom-0 w-px bg-neutral-700 sm:left-1/2 sm:-translate-x-1/2" />
+
+      {events.map((event, idx) => {
+        const isLeft = idx % 2 === 0;
+        const flashClass = idx === 0 && flashGeneration !== null ? " new-event-flash" : "";
+        const minute = formatEventTimeline(event);
+
+        return (
+          <li key={idx} className="relative">
+            <div className="sm:hidden relative pl-10">
+              <div className={`absolute left-[2px] top-2 z-10 rounded px-2 py-0.5 text-[10px] font-bold text-white ${getMinuteBadgeClass(event)}`}>
+                {minute}
+              </div>
+              <article className={`rounded border border-neutral-700 bg-neutral-900 p-3 pr-12 relative${flashClass}`}>
+                <button className="sp-button sp-button-xs sp-button-red absolute right-2 top-2" onClick={() => remove(idx)}>
+                  <FontAwesomeIcon icon={faTrashCan} />
+                </button>
+                {renderEventContent(event)}
+              </article>
+            </div>
+
+            <div className="hidden sm:grid sm:grid-cols-[1fr_auto_1fr] sm:items-start sm:gap-4">
+              <div className={`${isLeft ? "block" : "invisible"}`}>
+                <article className={`rounded border border-neutral-700 bg-neutral-900 p-3 pr-12 relative${flashClass}`}>
+                  <button className="sp-button sp-button-xs sp-button-red absolute right-2 top-2" onClick={() => remove(idx)}>
+                    <FontAwesomeIcon icon={faTrashCan} />
+                  </button>
+                  {renderEventContent(event)}
+                </article>
+              </div>
+
+              <div className="relative z-10 flex w-14 justify-center pt-1">
+                <div className={`rounded px-2 py-0.5 text-[10px] font-bold text-white ${getMinuteBadgeClass(event)}`}>
+                  {minute}
+                </div>
+              </div>
+
+              <div className={`${isLeft ? "invisible" : "block"}`}>
+                <article className={`rounded border border-neutral-700 bg-neutral-900 p-3 pr-12 relative${flashClass}`}>
+                  <button className="sp-button sp-button-xs sp-button-red absolute right-2 top-2" onClick={() => remove(idx)}>
+                    <FontAwesomeIcon icon={faTrashCan} />
+                  </button>
+                  {renderEventContent(event)}
+                </article>
+              </div>
+            </div>
+          </li>
+        );
+      })}
     </ul>
   );
 }
