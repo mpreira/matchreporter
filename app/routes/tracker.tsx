@@ -7,7 +7,6 @@ import TimerControls from "~/components/TimerControls";
 import CommandPanel from "~/components/CommandPanel";
 import EventForm from "~/components/EventForm";
 import EventsList from "~/components/EventsList";
-import TrackerTeamSelection from "~/components/TrackerTeamSelection";
 import TrackerStatsPanel from "~/components/TrackerStatsPanel";
 import TrackerTeamsPanel from "~/components/TrackerTeamsPanel";
 import Summary from "~/components/Summary";
@@ -114,6 +113,7 @@ export default function Tracker() {
     const [showMatchInfoEditor, setShowMatchInfoEditor] = useState(false);
     const [saveMessage, setSaveMessage] = useState<string>("");
     const [savedTrackingSignature, setSavedTrackingSignature] = useState<string | null>(null);
+    const [isTrackerReady, setIsTrackerReady] = useState(false);
     const contextInitializedRef = useRef(false);
     const prevContextRef = useRef<{ matchDay: string | number; championship: string; sport: string } | null>(null);
 
@@ -225,10 +225,16 @@ export default function Tracker() {
         }
     }, [events, referee, field, matchDate]);
 
-    function applyMatchInfo() {
+    function applyMatchInfo(options?: { closeEditor?: boolean }): boolean {
+      const closeEditor = options?.closeEditor ?? true;
         const nextField = fieldInput.trim();
         const nextReferee = refereeInput.trim();
         const nextDate = matchDateInput || getTodayIsoDate();
+
+      if (!nextField || !nextReferee || !nextDate) {
+        setSaveMessage("Renseignez date, terrain et arbitre.");
+        return false;
+      }
 
         setField(nextField);
         setReferee(nextReferee);
@@ -242,7 +248,10 @@ export default function Tracker() {
                 matchDate: nextDate,
             })
         );
-        setShowMatchInfoEditor(false);
+            if (closeEditor) {
+              setShowMatchInfoEditor(false);
+            }
+            return true;
     }
 
     // Charge la sélection d'équipes sauvegardée pour le championnat + la journée en cours.
@@ -388,14 +397,14 @@ export default function Tracker() {
         handleAddEvent(summaryEvent);
     }
 
-    async function saveTeamSelection() {
+    async function saveTeamSelection(): Promise<boolean> {
         if (!team1Id || !team2Id || !championship || !matchDay) {
             setSaveMessage("Veuillez sélectionner les deux équipes.");
-            return;
+        return false;
         }
         if (team1Id === team2Id) {
             setSaveMessage("Les équipes doivent être différentes.");
-            return;
+        return false;
         }
         try {
             // Save to API
@@ -412,10 +421,30 @@ export default function Tracker() {
             
             setSaveMessage("Affiche enregistrée ✓");
             setTimeout(() => setSaveMessage(""), 3000);
+            return true;
         } catch (e) {
             setSaveMessage("Erreur lors de la sauvegarde.");
+            return false;
         }
     }
+
+        useEffect(() => {
+          if (isTrackerReady) return;
+          const teamsReady = !!team1Id && !!team2Id && team1Id !== team2Id;
+          const infosReady = !!matchDate && !!field.trim() && !!referee.trim();
+          if (teamsReady && infosReady) {
+            setIsTrackerReady(true);
+          }
+        }, [isTrackerReady, team1Id, team2Id, matchDate, field, referee]);
+
+        async function handleSetupSubmit(event: React.FormEvent<HTMLFormElement>) {
+          event.preventDefault();
+          const hasValidMatchInfo = applyMatchInfo({ closeEditor: false });
+          if (!hasValidMatchInfo) return;
+          const teamsSaved = await saveTeamSelection();
+          if (!teamsSaved) return;
+          setIsTrackerReady(true);
+        }
 
     const hasTrackingContent =
         time !== 0 ||
@@ -557,6 +586,144 @@ export default function Tracker() {
         ? new Date(`${matchDate}T00:00:00`).toLocaleDateString("fr-FR")
         : "";
 
+    const setupCanSubmit =
+        !!team1Id &&
+        !!team2Id &&
+        team1Id !== team2Id &&
+        !!matchDateInput &&
+        !!fieldInput.trim() &&
+        !!refereeInput.trim();
+
+    if (!isTrackerReady) {
+        return (
+          <main className="sp-page min-h-0 space-y-5 pb-10">
+            <h1 className="leading-[0.95] font-bold tracking-[-0.03em] text-4xl text-center text-white">
+              Préparation du tracker
+            </h1>
+            <p className="text-foreground max-w-3xl text-base font-light text-white text-balance sm:text-lg text-center mx-auto">
+              <FontAwesomeIcon icon={faTrophy} className="sm:mr-1 mr-2" />
+              {championship} {matchDayLabel && <> — {matchDayLabel}</>}
+            </p>
+
+            {!activeRoster && (
+              <p className="text-red-600 text-center">
+                Aucun effectif actif. Allez sur la page « Effectifs » pour en sélectionner un ou en créer un.
+              </p>
+            )}
+
+            <form
+              className="mx-auto mb-0 w-full max-w-sm space-y-1.5 px-2 text-left sm:w-11/12 md:w-full lg:mb-0"
+              onSubmit={handleSetupSubmit}
+            >
+              <div className="sp-input-shell">
+                <label className="sp-input-label" htmlFor="trackerTeam1Select">
+                  Équipe 1
+                </label>
+                <select
+                  id="trackerTeam1Select"
+                  className="sp-input-control"
+                  value={team1Id}
+                  onChange={(e) => handleTeam1Change(e.target.value)}
+                >
+                  <option value="">-- Équipe 1 --</option>
+                  {teamsForDay.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {getDisplayTeamLabel(team)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="sp-input-shell">
+                <label className="sp-input-label" htmlFor="trackerTeam2Select">
+                  Équipe 2
+                </label>
+                <select
+                  id="trackerTeam2Select"
+                  className="sp-input-control"
+                  value={team2Id}
+                  onChange={(e) => handleTeam2Change(e.target.value)}
+                >
+                  <option value="">-- Équipe 2 --</option>
+                  {teamsForDay.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {getDisplayTeamLabel(team)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="sp-input-shell">
+                <label className="sp-input-label" htmlFor="trackerMatchDateInput">
+                  Date du match
+                </label>
+                <input
+                  id="trackerMatchDateInput"
+                  type="date"
+                  value={matchDateInput}
+                  onChange={(event) => setMatchDateInput(event.target.value)}
+                  className="sp-input-control"
+                />
+              </div>
+
+              <div className="sp-input-shell">
+                <label className="sp-input-label" htmlFor="trackerFieldInput">
+                  Terrain
+                </label>
+                <select
+                  id="trackerFieldInput"
+                  value={fieldInput}
+                  onChange={(event) => setFieldInput(event.target.value)}
+                  className="sp-input-control"
+                >
+                  <option value="">Selectionner un stade</option>
+                  {top14StadiumOptions.map((stadium) => (
+                    <option key={stadium} value={stadium}>
+                      {stadium}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="sp-input-shell">
+                <label className="sp-input-label" htmlFor="trackerRefereeInput">
+                  Arbitre
+                </label>
+                <input
+                  id="trackerRefereeInput"
+                  value={refereeInput}
+                  onChange={(event) => setRefereeInput(event.target.value)}
+                  placeholder="Nom de l'arbitre"
+                  className="sp-input-control"
+                />
+              </div>
+
+              {team1Id && team2Id && team1Id === team2Id && (
+                <p className="text-sm text-red-600">Équipe 1 et Équipe 2 doivent être différentes.</p>
+              )}
+
+              {teamsForDay.length === 0 && (
+                <p className="text-sm text-gray-600">Aucune composition pour cette journée.</p>
+              )}
+
+              <button
+                type="submit"
+                className="sp-button sp-button-md sp-button-full sp-button-blue"
+                disabled={!setupCanSubmit || teamsForDay.length === 0}
+              >
+                Valider et ouvrir le tracker
+              </button>
+
+              {saveMessage && (
+                <p className={`text-sm ${saveMessage.includes("✓") ? "text-green-400" : "text-red-500"}`}>
+                  {saveMessage}
+                </p>
+              )}
+            </form>
+          </main>
+        );
+    }
+
     return (
       <main className="sp-page min-h-0 space-y-6 pb-40 xl:pb-10">
         <h1 className="leading-[0.95] font-bold tracking-[-0.03em] text-4xl text-center text-white">
@@ -588,6 +755,15 @@ export default function Tracker() {
             title="Editer les infos"
           >
             <FontAwesomeIcon icon={faPenToSquare} />
+          </button>
+          <button
+            type="button"
+            className="group sp-button sp-button-md sp-button-neutral ml-2"
+            onClick={() => setIsTrackerReady(false)}
+            aria-label="Modifier la préparation"
+            title="Modifier la préparation"
+          >
+            Modifier la préparation
           </button>
         </p>
         <div className="max-w-3xl mx-auto mb-8"></div>
@@ -657,7 +833,7 @@ export default function Tracker() {
                 <button
                   type="button"
                   className="sp-button sp-button-md sp-button-blue"
-                  onClick={applyMatchInfo}
+                  onClick={() => applyMatchInfo()}
                 >
                   <FontAwesomeIcon icon={faCheck} className="sm:mr-2" />
                   Enregistrer
@@ -666,23 +842,6 @@ export default function Tracker() {
             </div>
           </div>
         )}
-
-        {!activeRoster && (
-          <p className="text-red-600">
-            Aucun effectif actif. Allez sur la page « Effectifs » pour en
-            sélectionner un ou en créer un.
-          </p>
-        )}
-
-        <TrackerTeamSelection
-          teamsForDay={teamsForDay}
-          team1Id={team1Id}
-          team2Id={team2Id}
-          onTeam1Change={handleTeam1Change}
-          onTeam2Change={handleTeam2Change}
-          onSave={saveTeamSelection}
-          saveMessage={saveMessage}
-        />
 
         {account && (
           <section className="sp-panel-compact space-y-2">
