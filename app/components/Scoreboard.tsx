@@ -34,16 +34,16 @@ export default function Scoreboard({
   const rightTeamColor = getTeamColor(teams[1]);
 
   return (
-    <div className="shadow-lg rounded-lg overflow-hidden flex flex-col sm:flex-row items-stretch">
+    <div className="shadow-lg rounded-lg overflow-hidden flex flex-row items-stretch">
       {/* left team*/}
       <div
-        className={`flex-1 text-white p-6 flex flex-col items-center ${leftTeamColor ? "" : "bg-blue-700"}`}
+        className={`flex-1 text-white p-3 sm:p-6 flex flex-col items-center justify-center ${leftTeamColor ? "" : "bg-blue-700"}`}
         style={leftTeamColor ? { backgroundColor: leftTeamColor } : undefined}
       >
         {teams[0] ? (
           <>
-            <div className="text-lg font-semibold mb-1">{displayTeamName(teams[0])}</div>
-            <div className="text-6xl font-bold">{displayScore(0)}</div>
+            <div className="text-sm sm:text-lg font-semibold mb-1">{displayTeamName(teams[0])}</div>
+            <div className="text-4xl sm:text-6xl font-bold leading-none">{displayScore(0)}</div>
             {displayBonus(0) && (
               <div className="mt-2 rounded bg-black/20 px-2 py-1 text-xs font-bold tracking-wide">{displayBonus(0)}</div>
             )}
@@ -54,24 +54,24 @@ export default function Scoreboard({
       </div>
 
       {/* timer / center */}
-      <div className="bg-gray-900 text-white flex flex-col items-center justify-center px-8 py-6 gap-2">
+      <div className="bg-gray-900 text-white flex flex-col items-center justify-center px-3 sm:px-8 py-3 sm:py-6 gap-1 sm:gap-2">
         {mainTimerText && (
-          <div className="text-3xl sm:text-5xl font-mono font-bold text-center break-words">{mainTimerText}</div>
+          <div className="text-xl sm:text-5xl font-mono font-bold text-center break-words leading-none">{mainTimerText}</div>
         )}
         {secondaryTimerText && (
-          <div className="text-xl sm:text-2xl font-mono text-yellow-300 text-center break-words">{secondaryTimerText}</div>
+          <div className="text-sm sm:text-2xl font-mono text-yellow-300 text-center break-words">{secondaryTimerText}</div>
         )}
       </div>
 
       {/* right team */}
       <div
-        className={`flex-1 text-white p-6 flex flex-col items-center ${rightTeamColor ? "" : "bg-red-700"}`}
+        className={`flex-1 text-white p-3 sm:p-6 flex flex-col items-center justify-center ${rightTeamColor ? "" : "bg-red-700"}`}
         style={rightTeamColor ? { backgroundColor: rightTeamColor } : undefined}
       >
         {teams[1] ? (
           <>
-            <div className="text-lg font-semibold mb-1">{displayTeamName(teams[1])}</div>
-            <div className="text-6xl font-bold">{displayScore(1)}</div>
+            <div className="text-sm sm:text-lg font-semibold mb-1">{displayTeamName(teams[1])}</div>
+            <div className="text-4xl sm:text-6xl font-bold leading-none">{displayScore(1)}</div>
             {displayBonus(1) && (
               <div className="mt-2 rounded bg-black/20 px-2 py-1 text-xs font-bold tracking-wide">{displayBonus(1)}</div>
             )}

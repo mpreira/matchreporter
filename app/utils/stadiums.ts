@@ -1,0 +1,16 @@
+export const Top14_Stadiums_2025_2026 = [
+  "Stade Ernest-Wallon, Toulouse",
+  "Stade GGL, Montpellier",
+  "Stade Jean-Bouin, Paris",
+  "Stade du Hameau, Pau",
+  "Stade Paris La Defense Arena, Nanterre",
+  "Stade Marcel-Deflandre, La Rochelle",
+  "Stade Marcel-Michelin, Clermont-Ferrand",
+  "Stade Chaban-Delmas, Bordeaux",
+  "Stade Mayol, Toulon",
+  "Stade Pierre-Fabre, Castres",
+  "Stade Matmut de Gerland, Lyon",
+  "Stade Jean-Dauger, Bayonne",
+  "Stade Aime-Giral, Perpignan",
+  "Stade de Sapiac, Montauban",
+] as const;

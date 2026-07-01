@@ -40,6 +40,9 @@ export interface StoredSummary {
   events: unknown[];
   teams?: Array<{ id: string; name: string }>;
   matchDay?: number;
+  matchDate?: string;
+  matchField?: string;
+  matchReferee?: string;
 }
 
 export interface Account {

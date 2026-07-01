@@ -22,7 +22,7 @@ export const EVENT_ICONS: Record<string, string> = {
   "Pénalité réussie": "✅",
   "Pénalité manquée": "❌",
   "Drop": "🦶",
-  "Essai de pénalité": "⚖️",
+  "Essai de pénalité": "🏉✅",
   "Carton jaune": "🟨",
   "Carton rouge": "🟥",
   "Carton orange": "🟧",
