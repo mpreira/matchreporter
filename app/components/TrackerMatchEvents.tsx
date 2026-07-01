@@ -93,14 +93,14 @@ function renderTwoColumnsBlock(
         <section className="space-y-1.5">
             <p className="text-base text-neutral-300 text-center">{label}</p>
             <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1 min-w-0">
+                <div className="space-y-1 min-w-0 text-left">
                     {leftLines.map((line, index) => (
                         <p key={`left-${label}-${index}`} className="text-xs text-neutral-300 break-words">
                             {line}
                         </p>
                     ))}
                 </div>
-                <div className="space-y-1 min-w-0">
+                <div className="space-y-1 min-w-0 text-right">
                     {rightLines.map((line, index) => (
                         <p key={`right-${label}-${index}`} className="text-xs text-neutral-300 break-words">
                             {line}
