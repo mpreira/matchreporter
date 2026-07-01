@@ -215,6 +215,9 @@ export const summaryCreateSchema = z.object({
   events: z.array(z.record(z.string(), z.unknown())),
   teams: z.array(summaryTeamSchema).optional(),
   matchDay: z.number().optional(),
+  matchDate: z.string().optional(),
+  matchField: z.string().optional(),
+  matchReferee: z.string().optional(),
 });
 
 // DELETE /api/summaries

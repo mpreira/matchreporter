@@ -14,6 +14,9 @@ interface StoredSummaryListItem {
     summary: Record<string, number>;
     teams?: Array<{ id: string; name: string }>;
     matchDay?: number;
+    matchDate?: string;
+    matchField?: string;
+    matchReferee?: string;
     events?: Array<{
         team?: { name: string };
     }>;
@@ -152,6 +155,13 @@ export default function SynthesesPage() {
                                 <FontAwesomeIcon icon={faTrashCan} />
                             </button>
                             </div>
+                            {(summary.matchDate || summary.matchField || summary.matchReferee) && (
+                                <p className="text-xs text-neutral-300">
+                                    {summary.matchDate ? new Date(`${summary.matchDate}T00:00:00`).toLocaleDateString("fr-FR") : "—"}
+                                    {` | Terrain: ${summary.matchField || "—"}`}
+                                    {` | Arbitre: ${summary.matchReferee || "—"}`}
+                                </p>
+                            )}
                         </li>
                     ))}
                 </ul>

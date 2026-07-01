@@ -179,7 +179,7 @@ export default function EventForm({
                         onChange={(e) => setUseManualMoment(e.target.checked)}
                         className="mr-2"
                     />
-                    Timecode manuel ?
+                    Chrono manuel ?
                 </label>
                 {useManualMoment && (
                     <>
@@ -301,7 +301,7 @@ export default function EventForm({
                 </select>
                 </div>
             </>
-            ) : (
+            ) : type === "Essai de pénalité" ? null : (
             <div className="sp-input-shell">
                 <label className="sp-input-label" htmlFor="playerSelect">Joueur</label>
                 <select

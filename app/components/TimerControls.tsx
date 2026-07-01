@@ -1,4 +1,4 @@
-import { faArrowRotateLeft, faCheck, faHourglassEnd, faHourglassStart, faPause, faPlay, faStop } from "@fortawesome/free-solid-svg-icons";
+import { faArrowRotateLeft, faCheck, faHourglassEnd, faHourglassStart, faPause, faPlay, faStop, faStopwatch } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 
 interface Props {
@@ -93,7 +93,15 @@ export default function TimerControls({
 
       <div className="sp-input-shell mt-4">
         <div className="flex items-center gap-3">
-          <label htmlFor="manualTimeInput" className="w-24 shrink-0 text-xs font-semibold uppercase tracking-wide text-neutral-400">Timecode</label>
+          <div className="h-10 w-5 shrink-0 flex items-center justify-center text-neutral-400">
+            <FontAwesomeIcon icon={faStopwatch} />
+          </div>
+          <label
+            htmlFor="manualTimeInput"
+            className="hidden sm:flex h-10 w-24 shrink-0 items-center text-xs font-semibold uppercase tracking-wide text-neutral-400"
+          >
+            Chrono
+          </label>
           <input
             id="manualTimeInput"
             type="text"
@@ -105,7 +113,7 @@ export default function TimerControls({
           />
           <button
             id="applyManualTimeButton"
-            className="sp-button sp-button-md sp-button-blue h-10 self-center shrink-0"
+            className="sp-button sp-button-md sp-button-blue h-10 shrink-0"
             onClick={onApplyManualTime}
           >
             <FontAwesomeIcon icon={faCheck} className="sm:mr-2" />

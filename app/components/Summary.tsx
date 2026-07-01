@@ -9,10 +9,13 @@ interface Props {
     currentTime: number;
     teams: Team[];
     matchDay?: number;
+    matchDate?: string;
+    matchField?: string;
+    matchReferee?: string;
     onSaved?: () => void;
 }
 
-export default function Summary({ events, currentTime, teams, matchDay, onSaved }: Props) {
+export default function Summary({ events, currentTime, teams, matchDay, matchDate, matchField, matchReferee, onSaved }: Props) {
     const summary = buildEventSummary(events);
     const [saveMessage, setSaveMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
     const [saving, setSaving] = useState(false);
@@ -36,6 +39,9 @@ export default function Summary({ events, currentTime, teams, matchDay, onSaved 
                     events,
                     teams: teams.map((team) => ({ id: team.id, name: team.name })),
                     matchDay,
+                    matchDate,
+                    matchField,
+                    matchReferee,
                 }),
             });
             if (!res.ok) {
