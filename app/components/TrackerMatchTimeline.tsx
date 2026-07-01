@@ -13,7 +13,7 @@ function isTrackedMatchEvent(type: string): boolean {
     const normalizedType = type.trim().toLowerCase();
     return (
         normalizedType.includes("essai") ||
-        normalizedType === "transformation" ||
+    normalizedType.includes("transformation") ||
         normalizedType.includes("pénalité") ||
         normalizedType.includes("drop") ||
         normalizedType.includes("carton")
