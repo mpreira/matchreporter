@@ -23,6 +23,9 @@ interface StoredSummary {
     events: Event[];
     teams?: Array<{ id: string; name: string }>;
     matchDay?: number;
+    matchDate?: string;
+    matchField?: string;
+    matchReferee?: string;
 }
 
 export async function loader({ request, params }: { request: Request; params: { summaryId?: string } }) {
@@ -288,12 +291,22 @@ export default function SyntheseDetailPage() {
         ? `${orderedTeams[0].name} ${finalScoreLeft} - ${finalScoreRight} ${orderedTeams[1].name}`
         : `${finalScoreLeft} - ${finalScoreRight}`;
     const halfTimeScoreText = `${halfScoreLeft} - ${halfScoreRight}`;
+    const summaryMatchDate = summary.matchDate
+        ? new Date(`${summary.matchDate}T00:00:00`).toLocaleDateString("fr-FR")
+        : null;
 
     return (
         <main className="sp-page space-y-4">
             <p className="text-sm text-gray-700 mb-2">
                 Date: <FormattedDateTime dateString={summary.createdAt} />
             </p>
+            {(summaryMatchDate || summary.matchField || summary.matchReferee) && (
+                <p className="text-sm text-gray-700 mb-2">
+                    {summaryMatchDate ? `Match: ${summaryMatchDate}` : "Match: —"}
+                    {` | Terrain: ${summary.matchField || "—"}`}
+                    {` | Arbitre: ${summary.matchReferee || "—"}`}
+                </p>
+            )}
             <Link to="/syntheses" className="text-white text-base">
                 <FontAwesomeIcon icon={faArrowLeft} className="mr-1" />
                 Retour aux synthèses
@@ -306,7 +319,7 @@ export default function SyntheseDetailPage() {
                         title: `Synthèse - ${getTeamsLabel()}`,
                         fileName: getTeamsLabel(),
                         layout: {
-                            dateLine: `Date: ${new Date(summary.createdAt).toLocaleString("fr-FR")}`,
+                            dateLine: `Date: ${new Date(summary.createdAt).toLocaleString("fr-FR")}${summaryMatchDate ? ` | Match: ${summaryMatchDate}` : ""}${summary.matchField ? ` | Terrain: ${summary.matchField}` : ""}${summary.matchReferee ? ` | Arbitre: ${summary.matchReferee}` : ""}`,
                             scoreLine: `${finalScoreText}\n${halfTimeScoreText}`,
                             resumeColumns: summaryByTeam
                                 ? [

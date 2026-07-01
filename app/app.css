@@ -44,6 +44,15 @@ body {
     @apply disabled:cursor-not-allowed disabled:opacity-60;
     @apply dark:text-gray-100 dark:placeholder:text-gray-500;
   }
+
+  select {
+    @apply bg-neutral-950;
+  }
+
+  select option {
+    @apply bg-neutral-950 text-gray-300;
+  }
+
   label {
     @apply text-base md:text-lg text-white font-semibold select-none group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50 gap-2;
   }

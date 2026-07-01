@@ -50,6 +50,9 @@ export const action: ActionFunction = async ({ request }) => {
             events: payload.events,
             teams: payload.teams,
             matchDay: payload.matchDay,
+            matchDate: payload.matchDate,
+            matchField: payload.matchField,
+            matchReferee: payload.matchReferee,
         };
         await insertSummary(summary);
 
