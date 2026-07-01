@@ -205,8 +205,10 @@ export default function Tracker() {
 
     function addStatsSummary(halfLabel: string) {
         if (selectedTeams.length !== 2) return;
+      const scores = computeScores();
       const summaryEvent = buildStatsSummaryEvent({
         halfLabel,
+        halfScore: [scores[0] || 0, scores[1] || 0],
         time,
         currentHalf,
         team1Name: getDisplayTeamLabel(selectedTeams[0]),

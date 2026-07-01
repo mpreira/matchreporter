@@ -47,7 +47,27 @@ export default function EventsList({ events, showKickoff, leftTeamId, rightTeamI
     ...(showKickoff ? [{ kind: "kickoff" as const }] : []),
   ];
 
-  function renderSummaryEvent(event: Event) {
+  function isHalfTimeSummaryEvent(event: Event): boolean {
+    const label = event.summaryTable?.halfLabel?.toLowerCase() || "";
+    return label.includes("mt1") || label.includes("mi-temps") || label.includes("mi temps");
+  }
+
+  function isFullTimeSummaryEvent(event: Event): boolean {
+    const label = event.summaryTable?.halfLabel?.toLowerCase() || "";
+    return label.includes("mt2") || label.includes("fin de match");
+  }
+
+  function getHalfTimeBannerText(event: Event): string {
+    const score = event.summaryTable?.halfScore;
+    return `Mi-temps${score ? ` ${score}` : ""}`;
+  }
+
+  function getFullTimeBannerText(event: Event): string {
+    const score = event.summaryTable?.halfScore;
+    return `Fin de match${score ? ` ${score}` : ""}`;
+  }
+
+  function renderSummaryEvent(event: Event, suppressHeader = false) {
     if (!event.summaryTable) {
       return (
         <>
@@ -61,9 +81,11 @@ export default function EventsList({ events, showKickoff, leftTeamId, rightTeamI
 
     return (
       <div className="w-full space-y-2">
-        <div>
-          {formatEventTimeline(event)} - <strong>{event.summaryTable.halfLabel}</strong>
-        </div>
+        {!suppressHeader && (
+          <div>
+            {formatEventTimeline(event)} - <strong>{event.summaryTable.halfLabel}</strong>
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full text-xs sm:text-sm border border-neutral-700 rounded">
             <thead>
@@ -169,9 +191,33 @@ export default function EventsList({ events, showKickoff, leftTeamId, rightTeamI
 
         const event = item.event;
         const eventIndex = idx;
+        const isHalfTimeSummary = Boolean(event.summaryTable && isHalfTimeSummaryEvent(event));
+        const isFullTimeSummary = Boolean(event.summaryTable && isFullTimeSummaryEvent(event));
         const isLeft = isEventOnLeft(event, eventIndex);
         const flashClass = eventIndex === 0 && flashGeneration !== null ? " new-event-flash" : "";
         const minute = formatEventTimeline(event);
+
+        if (isHalfTimeSummary || isFullTimeSummary) {
+          return (
+            <li key={idx} className="relative space-y-2">
+              <div className="w-full rounded border border-neutral-200 bg-white px-3 py-2 text-center text-lg uppercase font-semibold tracking-wide text-black shadow-sm">
+                {isHalfTimeSummary ? getHalfTimeBannerText(event) : getFullTimeBannerText(event)}
+              </div>
+
+              <div className="relative">
+                <div className={`absolute left-1/2 -top-2 z-10 -translate-x-1/2 rounded px-2 py-0.5 text-[10px] font-bold text-white ${getMinuteBadgeClass(event)}`}>
+                  {minute}
+                </div>
+                <article className={`w-full rounded border border-neutral-700 bg-neutral-900 p-3 pt-5 pr-12 relative${flashClass}`}>
+                  <button className="sp-button sp-button-xs sp-button-red absolute right-2 top-2" onClick={() => remove(eventIndex)}>
+                    <FontAwesomeIcon icon={faTrashCan} />
+                  </button>
+                  {renderSummaryEvent(event, true)}
+                </article>
+              </div>
+            </li>
+          );
+        }
 
         return (
           <li key={idx} className="relative">

@@ -3,6 +3,7 @@ import { getTimelineMomentFromClock } from "~/utils/TimeUtils";
 
 interface BuildStatsSummaryEventParams {
   halfLabel: string;
+  halfScore: [number, number];
   time: number;
   currentHalf: 1 | 2;
   team1Name: string;
@@ -17,6 +18,7 @@ interface BuildStatsSummaryEventParams {
 
 export function buildStatsSummaryEvent({
   halfLabel,
+  halfScore,
   time,
   currentHalf,
   team1Name,
@@ -51,6 +53,7 @@ export function buildStatsSummaryEvent({
     summary,
     summaryTable: {
       halfLabel,
+      halfScore: `${halfScore[0]} - ${halfScore[1]}`,
       teams: [
         {
           teamName: team1Name,

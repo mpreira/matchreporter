@@ -169,6 +169,7 @@ export interface EventSummaryTableTeam {
 
 export interface EventSummaryTable {
     halfLabel: string;
+    halfScore?: string;
     teams: [EventSummaryTableTeam, EventSummaryTableTeam];
 }
 
