@@ -1,52 +1,34 @@
-import { useCallback, useEffect, useState, useMemo, useRef } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import type { Route } from "./+types/tracker";
 import type { Event } from "~/types/tracker";
 import type { LiveSnapshot } from "~/types/live";
 
 import TimerControls from "~/components/TimerControls";
-import CommandPanel from "~/components/CommandPanel";
-import EventForm from "~/components/EventForm";
 import EventsList from "~/components/EventsList";
-import TrackerStatsPanel from "~/components/TrackerStatsPanel";
-import TrackerTeamsPanel from "~/components/TrackerTeamsPanel";
 import Summary from "~/components/Summary";
 import Scoreboard from "~/components/Scoreboard";
 import TrackerSetupWizard from "~/components/TrackerSetupWizard";
 import TrackerMatchInfoEditor from "~/components/TrackerMatchInfoEditor";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faArrowRotateLeft, faChartLine, faListCheck, faPenToSquare, faTrophy, faUsers } from "@fortawesome/free-solid-svg-icons";
+import TrackerHeader from "~/components/TrackerHeader";
+import TrackerLivePanel from "~/components/TrackerLivePanel";
+import TrackerActionWorkspace from "~/components/TrackerActionWorkspace";
+import { ACTION_TABS, COMMAND_TYPES } from "~/constants/tracker";
+import type { TrackerActionTab } from "~/constants/tracker";
 import { useTeams } from "~/context/TeamsContext";
 import { useAccount } from "~/context/AccountContext";
 import { useTrackerClock } from "~/hooks/useTrackerClock";
 import { useTrackerEvents } from "~/hooks/useTrackerEvents";
 import { useTrackerStats } from "~/hooks/useTrackerStats";
 import { useTrackerSetup } from "~/hooks/useTrackerSetup";
+import { useTrackerContextReset } from "~/hooks/useTrackerContextReset";
+import { useTrackerMatchPresentation } from "~/hooks/useTrackerMatchPresentation";
 import { useLiveBroadcast } from "~/hooks/useLiveBroadcast";
-import { getTimelineMomentFromClock } from "~/utils/TimeUtils";
+import { buildStatsSummaryEvent } from "~/utils/trackerSummaryEvent";
 import { Top14_Stadiums_2025_2026 } from "~/utils/stadiums";
-import TrackerNotesPanel from "~/components/TrackerNotesPanel";
-import { faCalendarDays, faClipboard, faHouse, faUser, faEye, faCircleStop } from "@fortawesome/free-regular-svg-icons";
 
 export function meta({}: Route.MetaArgs) {
-    return [{ title: "Match Reporter" }];
+  return [{ title: "Match Reporter" }];
 }
-
-const COMMAND_TYPES = [
-    "Essai",
-    "Transformation",
-    "Transformation manquée",
-    "Pénalité réussie",
-    "Drop",
-    "Essai de pénalité",
-    "Pénalité manquée",
-    "Carton jaune",
-    "Carton rouge",
-    "Carton orange",
-    "Changement",
-    "Saignement",
-    "Blessure",
-    "Arbitrage Vidéo",
-];
 
 const TRACKER_ACTION_TAB_STORAGE_KEY = "sidepitcher.tracker.actionTab";
 export default function Tracker() {
@@ -69,37 +51,12 @@ export default function Tracker() {
         resetClock,
     } = useTrackerClock();
     const { rosters, teams, activeRosterId, matchDay, championship, sport } = useTeams();
-    const normalizedMatchDay = matchDay.trim();
-    const parsedMatchDay = normalizedMatchDay.match(/^J?\s*(\d+)$/i);
-    const matchDayLabel = parsedMatchDay ? `J${parsedMatchDay[1]}` : normalizedMatchDay;
     
     const activeRoster = useMemo(() => rosters.find((r) => r.id === activeRosterId) ?? null, [rosters, activeRosterId]);
     
-    const rosterNicknameById = useMemo(
-        () => new Map(rosters.map((roster) => [roster.id, roster.nickname || ""])),
-        [rosters]
-    );
-    const rosterNameById = useMemo(
-      () => new Map(rosters.map((roster) => [roster.id, roster.name])),
-      [rosters]
-    );
-    
-    // Si un contexte de match est sélectionné, on filtre les équipes sur ce libellé (ex: J3 ou Bordeaux)
-    // puis on y injecte le surnom de l'effectif associé.
-    const teamsForDay = useMemo(
-        () => matchDayLabel
-            ? teams
-                .filter((t) => t.name.includes(matchDayLabel))
-                .map((team) => ({ ...team, nickname: team.nickname || rosterNicknameById.get(team.rosterId) || undefined }))
-            : teams.map((team) => ({ ...team, nickname: team.nickname || rosterNicknameById.get(team.rosterId) || undefined })),
-        [teams, matchDayLabel, rosterNicknameById]
-    );
-    
     const [activeCommand, setActiveCommand] = useState<string | null>(null);
-    const [actionTab, setActionTab] = useState<"events" | "stats" | "teams"| "notes" >("events");
+    const [actionTab, setActionTab] = useState<TrackerActionTab>("events");
     const [savedTrackingSignature, setSavedTrackingSignature] = useState<string | null>(null);
-    const contextInitializedRef = useRef(false);
-    const prevContextRef = useRef<{ matchDay: string | number; championship: string; sport: string } | null>(null);
 
     const {
       team1Id,
@@ -131,13 +88,22 @@ export default function Tracker() {
       matchDay,
     });
 
-    const selectedTeams = useMemo(
-        () => [
-            teamsForDay.find((t) => t.id === team1Id),
-            teamsForDay.find((t) => t.id === team2Id),
-        ].filter(Boolean) as typeof teams,
-        [teamsForDay, team1Id, team2Id]
-    );
+    const {
+      matchDayLabel,
+      teamsForDay,
+      selectedTeams,
+      getDisplayTeamLabel,
+      mobileMatchTitle,
+      desktopMatchTitle,
+      formattedMatchDate,
+    } = useTrackerMatchPresentation({
+      rosters,
+      teams,
+      matchDay,
+      team1Id,
+      team2Id,
+      matchDate,
+    });
 
     const selectedTeamIds = useMemo(() => [team1Id, team2Id], [team1Id, team2Id]);
     const top14StadiumOptions = useMemo(() => {
@@ -160,28 +126,6 @@ export default function Tracker() {
         selectedTeamsCount: selectedTeams.length,
     });
 
-    // Retourne le surnom de l'équipe s'il existe, sinon le nom sans le suffixe de journée (ex: " J3").
-    function getDisplayTeamLabel(team: { name: string; nickname?: string }): string {
-        return team.nickname || team.name.replace(/\s+J\d+$/, "");
-    }
-
-    function getRosterTeamLabel(team: { name: string; rosterId?: string }): string {
-      if (team.rosterId) {
-        const rosterName = rosterNameById.get(team.rosterId);
-        if (rosterName) return rosterName;
-      }
-      return team.name.replace(/\s+J\d+$/, "");
-    }
-
-    const mobileMatchTitle =
-      selectedTeams.length === 2
-        ? `${getDisplayTeamLabel(selectedTeams[0])} v ${getDisplayTeamLabel(selectedTeams[1])}`
-        : "Feuille de match";
-
-    const desktopMatchTitle =
-      selectedTeams.length === 2
-        ? `${getRosterTeamLabel(selectedTeams[0])} v ${getRosterTeamLabel(selectedTeams[1])}`
-        : "Feuille de match";
 
     const {
         teamPenalties,
@@ -206,8 +150,9 @@ export default function Tracker() {
 
     useEffect(() => {
         const storedTab = window.localStorage.getItem(TRACKER_ACTION_TAB_STORAGE_KEY);
-        if (storedTab === "events" || storedTab === "stats" || storedTab === "teams") {
-            setActionTab(storedTab);
+      const tabIds = ACTION_TABS.map((tab) => tab.id);
+      if (storedTab && tabIds.includes(storedTab as TrackerActionTab)) {
+        setActionTab(storedTab as TrackerActionTab);
         }
     }, []);
 
@@ -232,38 +177,12 @@ export default function Tracker() {
       resetMatchInfo();
     }
 
-    // Détecte un changement de contexte (championnat / journée / sport) après le premier rendu.
-    // On utilise des refs pour comparer les valeurs précédentes sans déclencher de boucle.
-    // Si le contexte change, on remet à zéro tous les événements, la minuterie et les stats.
-    // On ignore la transition initiale (valeurs par défaut → valeurs chargées du serveur)
-    // pour ne pas effacer les données persistées en localStorage (ex. arbitre).
-    useEffect(() => {
-        if (!contextInitializedRef.current) {
-            // Premier rendu : on mémorise le contexte initial sans réinitialiser
-            contextInitializedRef.current = true;
-            prevContextRef.current = { matchDay, championship, sport };
-            return;
-        }
-
-        const prev = prevContextRef.current;
-        if (!prev) {
-            prevContextRef.current = { matchDay, championship, sport };
-            return;
-        }
-
-        const contextChanged =
-            prev.matchDay !== matchDay ||
-            prev.championship !== championship ||
-            prev.sport !== sport;
-
-        // Si matchDay précédent est vide, c'est le chargement initial depuis le serveur,
-        // pas un vrai changement de contexte de l'utilisateur.
-        if (contextChanged && prev.matchDay !== "") {
-            resetTrackerInfos();
-        }
-
-        prevContextRef.current = { matchDay, championship, sport };
-    }, [matchDay, championship, sport]);
+    useTrackerContextReset({
+      matchDay,
+      championship,
+      sport,
+      onContextChangeReset: resetTrackerInfos,
+    });
 
 // timer interval
     useEffect(() => {
@@ -283,45 +202,21 @@ export default function Tracker() {
 
     function addStatsSummary(halfLabel: string) {
         if (selectedTeams.length !== 2) return;
-        const summaryMoment = getTimelineMomentFromClock(time, currentHalf);
-        const team1Name = getDisplayTeamLabel(selectedTeams[0]);
-        const team2Name = getDisplayTeamLabel(selectedTeams[1]);
-        const displayedPenalties = getDisplayedPenalties();
-        const displayedEnAvant = getDisplayedEnAvant();
-        const statRows = [
-            { label: "Pénalités", left: displayedPenalties[0] || 0, right: displayedPenalties[1] || 0 },
-            { label: "En-avants", left: displayedEnAvant[0] || 0, right: displayedEnAvant[1] || 0 },
-            { label: "Touches perdues", left: teamTouchePerdue[0] || 0, right: teamTouchePerdue[1] || 0 },
-            { label: "Mêlées perdues", left: teamMeleePerdue[0] || 0, right: teamMeleePerdue[1] || 0 },
-            { label: "Turnovers", left: teamTurnover[0] || 0, right: teamTurnover[1] || 0 },
-            { label: "Jeu au pied", left: teamJeuAuPied[0] || 0, right: teamJeuAuPied[1] || 0 },
-        ];
-        const summary = `${halfLabel} : ${team1Name} : ${displayedPenalties[0]} pénalités, ${displayedEnAvant[0]} en-avants, ${teamTouchePerdue[0] || 0} touches perdues, ${teamMeleePerdue[0] || 0} mêlées perdues, ${teamTurnover[0] || 0} turnovers, ${teamJeuAuPied[0] || 0} jeux au pied / ${team2Name} : ${displayedPenalties[1]} pénalités, ${displayedEnAvant[1]} en-avants, ${teamTouchePerdue[1] || 0} touches perdues, ${teamMeleePerdue[1] || 0} mêlées perdues, ${teamTurnover[1] || 0} turnovers, ${teamJeuAuPied[1] || 0} jeux au pied`;
-        
-        const summaryEvent: Event = {
-            type: "Récapitulatif",
-            time: time,
-            timelineHalf: summaryMoment.half,
-            timelineMinute: summaryMoment.minute,
-            timelineAdditionalMinute: summaryMoment.additionalMinute,
-            timelineSecond: summaryMoment.second,
-            summary: summary,
-            summaryTable: {
-                halfLabel,
-                teams: [
-                    {
-                        teamName: team1Name,
-                        stats: statRows.map((row) => ({ label: row.label, value: row.left })),
-                    },
-                    {
-                        teamName: team2Name,
-                        stats: statRows.map((row) => ({ label: row.label, value: row.right })),
-                    },
-                ],
-            },
-        };
+      const summaryEvent = buildStatsSummaryEvent({
+        halfLabel,
+        time,
+        currentHalf,
+        team1Name: getDisplayTeamLabel(selectedTeams[0]),
+        team2Name: getDisplayTeamLabel(selectedTeams[1]),
+        displayedPenalties: getDisplayedPenalties(),
+        displayedEnAvant: getDisplayedEnAvant(),
+        teamTouchePerdue,
+        teamMeleePerdue,
+        teamTurnover,
+        teamJeuAuPied,
+      });
 
-        handleAddEvent(summaryEvent);
+      handleAddEvent(summaryEvent);
     }
 
     const hasTrackingContent =
@@ -470,10 +365,6 @@ export default function Tracker() {
       resetPreparationState();
     }
 
-    const formattedMatchDate = matchDate
-        ? new Date(`${matchDate}T00:00:00`).toLocaleDateString("fr-FR")
-        : "";
-
     if (!isTrackerReady) {
         return (
           <TrackerSetupWizard
@@ -502,50 +393,17 @@ export default function Tracker() {
 
     return (
       <main className="sp-page min-h-0 space-y-6 pb-40 xl:pb-10">
-        <h1 className="leading-[0.95] font-bold tracking-[-0.03em] text-4xl text-center text-white">
-          <span className="lg:hidden">{mobileMatchTitle}</span>
-          <span className="hidden lg:inline">{desktopMatchTitle}</span>
-        </h1>
-        <p className="text-foreground max-w-3xl text-base font-light text-white text-balance sm:text-lg text-center mx-auto">
-          <FontAwesomeIcon icon={faTrophy} className="sm:mr-1 mr-2" />
-          {championship} {matchDayLabel && <> — {matchDayLabel}</>}
-          <FontAwesomeIcon
-            icon={faCalendarDays}
-            className="sm:ml-2 sm:mr-1 ml-4 mr-2"
-          />{" "}
-          {formattedMatchDate || ""}
-          <FontAwesomeIcon
-            icon={faHouse}
-            className="sm:ml-2 sm:mr-1 ml-4 mr-2"
-          />{" "}
-          {field || "—"}
-          <FontAwesomeIcon
-            icon={faUser}
-            className="sm:ml-2 sm:mr-1 ml-4 mr-2"
-          />{" "}
-          {referee || "—"}
-          <button
-            type="button"
-            className="group sp-button sp-button-md sp-button-yellow ml-4 md:ml-2"
-            onClick={() => setIsTrackerReady(false)}
-            aria-label="Modifier la préparation"
-            title="Modifier la préparation"
-          >
-            <FontAwesomeIcon icon={faPenToSquare} className="sm:mr-2" />
-            <span className="hidden sm:inline">Modifier</span>
-          </button>
-          <button
-            type="button"
-            className="group sp-button sp-button-md sp-button-red ml-2"
-            onClick={handleResetToInitialState}
-            aria-label="Réinitialiser"
-            title="Réinitialiser"
-          >
-            <FontAwesomeIcon icon={faArrowRotateLeft} className="sm:mr-2" />
-            <span className="hidden sm:inline">Réinitialiser</span>
-          </button>
-        </p>
-        <div className="max-w-3xl mx-auto mb-8"></div>
+        <TrackerHeader
+          mobileMatchTitle={mobileMatchTitle}
+          desktopMatchTitle={desktopMatchTitle}
+          championship={championship}
+          matchDayLabel={matchDayLabel}
+          formattedMatchDate={formattedMatchDate}
+          field={field}
+          referee={referee}
+          onEditPreparation={() => setIsTrackerReady(false)}
+          onResetToInitialState={handleResetToInitialState}
+        />
 
         <TrackerMatchInfoEditor
           isOpen={showMatchInfoEditor}
@@ -560,52 +418,17 @@ export default function Tracker() {
           onRefereeInputChange={setRefereeInput}
         />
 
-        {account && (
-          <section className="sp-panel-compact space-y-2">
-            <p className="text-sm text-neutral-300">
-              Diffusion externe en lecture seule
-            </p>
-            {!livePublicSlug ? (
-              <button
-                className="sp-button sp-button-md sp-button-full sp-button-indigo"
-                onClick={activateLivePublic}
-                disabled={!canPublishLive || liveBusy}
-              >
-                <FontAwesomeIcon icon={faEye} className="sm:mr-2" />
-                {liveBusy ? "Activation..." : "Activer le live public"}
-              </button>
-            ) : (
-              <>
-                <p className="text-xs break-all text-neutral-200">
-                  {liveViewerUrl}
-                </p>
-                <button
-                  className="sp-button sp-button-md sp-button-full sp-button-blue"
-                  onClick={copyLiveViewerUrl}
-                >
-                  <FontAwesomeIcon icon={faClipboard} className="sm:mr-2" />
-                  Copier le lien spectateur
-                </button>
-                <button
-                  className="sp-button sp-button-md sp-button-full sp-button-red"
-                  onClick={closeLivePublic}
-                  disabled={liveBusy}
-                >
-                  <FontAwesomeIcon icon={faCircleStop} className="sm:mr-2" />
-                  Arrêter le live
-                </button>
-              </>
-            )}
-            {!canPublishLive && !livePublicSlug && (
-              <p className="text-xs text-neutral-400">
-                Sélectionne deux équipes différentes pour activer le live.
-              </p>
-            )}
-            {liveMessage && (
-              <p className="text-sm text-green-700">{liveMessage}</p>
-            )}
-          </section>
-        )}
+        <TrackerLivePanel
+          isVisible={!!account}
+          livePublicSlug={livePublicSlug}
+          liveViewerUrl={liveViewerUrl}
+          canPublishLive={canPublishLive}
+          liveBusy={liveBusy}
+          liveMessage={liveMessage}
+          onActivateLivePublic={activateLivePublic}
+          onCopyLiveViewerUrl={copyLiveViewerUrl}
+          onCloseLivePublic={closeLivePublic}
+        />
 
         {/* scoreboard showing teams, computed score and timers */}
         {(() => {
@@ -657,142 +480,33 @@ export default function Tracker() {
             setRunning(false);
           }}
         />
-        {/* onglets */}
-        <section className="space-y-2">
-          <div className="flex items-center gap-2">
-            <button
-              className={`px-2 sm:px-3 py-2 rounded border text-sm font-medium transition-colors ${
-                actionTab === "events"
-                  ? "border-blue-500 bg-blue-500/20 text-blue-300"
-                  : "border-neutral-700 bg-neutral-900 text-neutral-300 hover:bg-neutral-800"
-              }`}
-              onClick={() => setActionTab("events")}
-            >
-              <FontAwesomeIcon icon={faListCheck} className="sm:mr-1" />
-              <span className="hidden sm:inline"> Événements</span>
-            </button>
-            <button
-              className={`px-2 sm:px-3 py-2 rounded border text-sm font-medium transition-colors ${
-                actionTab === "stats"
-                  ? "border-blue-500 bg-blue-500/20 text-blue-300"
-                  : "border-neutral-700 bg-neutral-900 text-neutral-300 hover:bg-neutral-800"
-              }`}
-              onClick={() => {
-                setActionTab("stats");
-                setActiveCommand(null);
-              }}
-            >
-              <FontAwesomeIcon icon={faChartLine} className="sm:mr-1" />
-              <span className="hidden sm:inline"> Statistiques</span>
-            </button>
-            <button
-              className={`px-2 sm:px-3 py-2 rounded border text-sm font-medium transition-colors ${
-                actionTab === "teams"
-                  ? "border-blue-500 bg-blue-500/20 text-blue-300"
-                  : "border-neutral-700 bg-neutral-900 text-neutral-300 hover:bg-neutral-800"
-              }`}
-              onClick={() => {
-                setActionTab("teams");
-                setActiveCommand(null);
-              }}
-            >
-              <FontAwesomeIcon icon={faUsers} className="sm:mr-1" />
-              <span className="hidden sm:inline"> Équipes</span>
-            </button>
-            <button
-              className={`px-2 sm:px-3 py-2 rounded border text-sm font-medium transition-colors ${
-                actionTab === "notes"
-                  ? "border-blue-500 bg-blue-500/20 text-blue-300"
-                  : "border-neutral-700 bg-neutral-900 text-neutral-300 hover:bg-neutral-800"
-              }`}
-              onClick={() => {
-                setActionTab("notes");
-                setActiveCommand(null);
-              }}
-            >
-              <FontAwesomeIcon icon={faClipboard} className="sm:mr-1" />
-              <span className="hidden sm:inline"> Notes</span>
-            </button>
-          </div>
-        </section>
-        {/* toggle des onglets */}
-        {actionTab === "teams" && (
-          <section className="space-y-3">
-            <TrackerTeamsPanel
-              selectedTeams={selectedTeams}
-              events={events}
-              getDisplayTeamLabel={getDisplayTeamLabel}
-            />
-          </section>
-        )}
-
-        {actionTab === "notes" && (
-          <section className="space-y-3">
-            <TrackerNotesPanel />
-          </section>
-        )}
-
-        {actionTab === "stats" && (
-          <section className="space-y-3">
-            <h3 className="font-semibold text-center">Statistiques</h3>
-            {selectedTeams.length !== 2 ? (
-              <p className="text-sm text-gray-500 text-center">
-                Sélectionne et valide deux équipes pour afficher les
-                statistiques.
-              </p>
-            ) : (
-              <TrackerStatsPanel
-                selectedTeams={selectedTeams}
-                getDisplayTeamLabel={getDisplayTeamLabel}
-                displayedPenalties={getDisplayedPenalties()}
-                displayedEnAvant={getDisplayedEnAvant()}
-                teamTouchePerdue={teamTouchePerdue}
-                teamMeleePerdue={teamMeleePerdue}
-                teamTurnover={teamTurnover}
-                teamJeuAuPied={teamJeuAuPied}
-                adjustPenalties={adjustPenalties}
-                adjustEnAvant={adjustEnAvant}
-                adjustTouchePerdue={adjustTouchePerdue}
-                adjustMeleePerdue={adjustMeleePerdue}
-                adjustTurnover={adjustTurnover}
-                adjustJeuAuPied={adjustJeuAuPied}
-              />
-            )}
-          </section>
-        )}
-
-        {actionTab === "events" && (
-          <>
-            <CommandPanel
-              types={COMMAND_TYPES}
-              onSelect={(type) => setActiveCommand(type)}
-            />
-
-            {activeCommand && team1Id && team2Id && team1Id !== team2Id && (
-              <div
-                className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
-                onClick={() => setActiveCommand(null)}
-              >
-                <div onClick={(event) => event.stopPropagation()}>
-                  <EventForm
-                    type={activeCommand}
-                    teams={selectedTeams}
-                    currentTime={time}
-                    currentHalf={currentHalf}
-                    onSubmit={handleAddEvent}
-                    onCancel={() => setActiveCommand(null)}
-                  />
-                </div>
-              </div>
-            )}
-            {activeCommand && (!team1Id || !team2Id || team1Id === team2Id) && (
-              <p className="text-sm text-red-600">
-                Sélectionne deux équipes différentes pour enregistrer un
-                événement.
-              </p>
-            )}
-          </>
-        )}
+        <TrackerActionWorkspace
+          actionTab={actionTab}
+          onActionTabChange={setActionTab}
+          activeCommand={activeCommand}
+          onActiveCommandChange={setActiveCommand}
+          commandTypes={[...COMMAND_TYPES]}
+          team1Id={team1Id}
+          team2Id={team2Id}
+          selectedTeams={selectedTeams}
+          time={time}
+          currentHalf={currentHalf}
+          events={events}
+          onAddEvent={handleAddEvent}
+          getDisplayTeamLabel={getDisplayTeamLabel}
+          displayedPenalties={getDisplayedPenalties()}
+          displayedEnAvant={getDisplayedEnAvant()}
+          teamTouchePerdue={teamTouchePerdue}
+          teamMeleePerdue={teamMeleePerdue}
+          teamTurnover={teamTurnover}
+          teamJeuAuPied={teamJeuAuPied}
+          adjustPenalties={adjustPenalties}
+          adjustEnAvant={adjustEnAvant}
+          adjustTouchePerdue={adjustTouchePerdue}
+          adjustMeleePerdue={adjustMeleePerdue}
+          adjustTurnover={adjustTurnover}
+          adjustJeuAuPied={adjustJeuAuPied}
+        />
 
         <section className="space-y-2">
           <h2 className="font-semibold">Faits de match</h2>
