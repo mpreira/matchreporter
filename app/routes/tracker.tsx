@@ -454,6 +454,8 @@ export default function Tracker() {
               bonuses={computeBonuses(scores)}
               mainTimerText={mainTimerText}
               secondaryTimerText={secondaryTimerText}
+              currentTime={time}
+              events={events}
             />
           );
         })()}
