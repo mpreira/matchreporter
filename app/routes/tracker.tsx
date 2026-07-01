@@ -25,7 +25,7 @@ import { useLiveBroadcast } from "~/hooks/useLiveBroadcast";
 import { getTimelineMomentFromClock } from "~/utils/TimeUtils";
 import { Top14_Stadiums_2025_2026 } from "~/utils/stadiums";
 import TrackerNotesPanel from "~/components/TrackerNotesPanel";
-import { faCalendarDays, faClipboard, faHouse, faUser } from "@fortawesome/free-regular-svg-icons";
+import { faCalendarDays, faClipboard, faHouse, faUser, faEye, faCircleStop } from "@fortawesome/free-regular-svg-icons";
 
 export function meta({}: Route.MetaArgs) {
     return [{ title: "Match Reporter" }];
@@ -509,7 +509,7 @@ export default function Tracker() {
             title="Modifier la préparation"
           >
             <FontAwesomeIcon icon={faPenToSquare} className="sm:mr-2" />
-            <span className="hidden sm:inline">Modifier la préparation</span>
+            <span className="hidden sm:inline">Modifier</span>
           </button>
           <button
             type="button"
@@ -548,6 +548,7 @@ export default function Tracker() {
                 onClick={activateLivePublic}
                 disabled={!canPublishLive || liveBusy}
               >
+                <FontAwesomeIcon icon={faEye} className="sm:mr-2" />
                 {liveBusy ? "Activation..." : "Activer le live public"}
               </button>
             ) : (
@@ -559,6 +560,7 @@ export default function Tracker() {
                   className="sp-button sp-button-md sp-button-full sp-button-blue"
                   onClick={copyLiveViewerUrl}
                 >
+                  <FontAwesomeIcon icon={faClipboard} className="sm:mr-2" />
                   Copier le lien spectateur
                 </button>
                 <button
@@ -566,7 +568,8 @@ export default function Tracker() {
                   onClick={closeLivePublic}
                   disabled={liveBusy}
                 >
-                  Fermer le live
+                  <FontAwesomeIcon icon={faCircleStop} className="sm:mr-2" />
+                  Arrêter le live
                 </button>
               </>
             )}
