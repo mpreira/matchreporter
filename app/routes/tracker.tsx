@@ -12,8 +12,9 @@ import TrackerTeamsPanel from "~/components/TrackerTeamsPanel";
 import Summary from "~/components/Summary";
 import Scoreboard from "~/components/Scoreboard";
 import TrackerSetupWizard from "~/components/TrackerSetupWizard";
+import TrackerMatchInfoEditor from "~/components/TrackerMatchInfoEditor";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faArrowRotateLeft, faChartLine, faCheck, faListCheck, faPenToSquare, faTrophy, faUsers } from "@fortawesome/free-solid-svg-icons";
+import { faArrowRotateLeft, faChartLine, faListCheck, faPenToSquare, faTrophy, faUsers } from "@fortawesome/free-solid-svg-icons";
 import { useTeams } from "~/context/TeamsContext";
 import { useAccount } from "~/context/AccountContext";
 import { useTrackerClock } from "~/hooks/useTrackerClock";
@@ -523,80 +524,18 @@ export default function Tracker() {
         </p>
         <div className="max-w-3xl mx-auto mb-8"></div>
 
-        {showMatchInfoEditor && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
-            onClick={() => setShowMatchInfoEditor(false)}
-          >
-            <div
-              className="sp-panel-compact w-full max-w-lg space-y-3"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <h2 className="text-base font-semibold">Infos du match</h2>
-              <div className="space-y-2 text-left">
-                <div className="sp-input-shell">
-                  <label className="sp-input-label" htmlFor="matchDateInput">
-                    Date du match
-                  </label>
-                  <input
-                    id="matchDateInput"
-                    type="date"
-                    value={matchDateInput}
-                    onChange={(event) => setMatchDateInput(event.target.value)}
-                    className="sp-input-control"
-                  />
-                </div>
-                <div className="sp-input-shell">
-                  <label className="sp-input-label" htmlFor="fieldInput">
-                    Terrain
-                  </label>
-                  <select
-                    id="fieldInput"
-                    value={fieldInput}
-                    onChange={(event) => setFieldInput(event.target.value)}
-                    className="sp-input-control"
-                  >
-                    <option value="">Selectionner un stade</option>
-                    {top14StadiumOptions.map((stadium) => (
-                      <option key={stadium} value={stadium}>
-                        {stadium}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="sp-input-shell">
-                  <label className="sp-input-label" htmlFor="refereeInput">
-                    Arbitre
-                  </label>
-                  <input
-                    id="refereeInput"
-                    value={refereeInput}
-                    onChange={(event) => setRefereeInput(event.target.value)}
-                    placeholder="Nom de l'arbitre"
-                    className="sp-input-control"
-                  />
-                </div>
-              </div>
-              <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
-                  className="sp-button sp-button-md sp-button-neutral"
-                  onClick={() => setShowMatchInfoEditor(false)}
-                >
-                  Annuler
-                </button>
-                <button
-                  type="button"
-                  className="sp-button sp-button-md sp-button-blue"
-                  onClick={() => applyMatchInfo()}
-                >
-                  <FontAwesomeIcon icon={faCheck} className="sm:mr-2" />
-                  Enregistrer
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        <TrackerMatchInfoEditor
+          isOpen={showMatchInfoEditor}
+          matchDateInput={matchDateInput}
+          fieldInput={fieldInput}
+          refereeInput={refereeInput}
+          stadiumOptions={top14StadiumOptions}
+          onClose={() => setShowMatchInfoEditor(false)}
+          onSave={() => applyMatchInfo()}
+          onMatchDateInputChange={setMatchDateInput}
+          onFieldInputChange={setFieldInput}
+          onRefereeInputChange={setRefereeInput}
+        />
 
         {account && (
           <section className="sp-panel-compact space-y-2">
