@@ -519,7 +519,7 @@ export default function Tracker() {
             title="Réinitialiser"
           >
             <FontAwesomeIcon icon={faArrowRotateLeft} className="sm:mr-2" />
-            <span className="hidden sm:inline">Reset</span>
+            <span className="hidden sm:inline">Réinitialiser</span>
           </button>
         </p>
         <div className="max-w-3xl mx-auto mb-8"></div>
