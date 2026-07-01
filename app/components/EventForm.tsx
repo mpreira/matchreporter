@@ -179,7 +179,7 @@ export default function EventForm({
                         onChange={(e) => setUseManualMoment(e.target.checked)}
                         className="mr-2"
                     />
-                    Timecode manuel ?
+                    Chrono manuel ?
                 </label>
                 {useManualMoment && (
                     <>
