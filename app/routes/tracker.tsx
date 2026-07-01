@@ -12,7 +12,7 @@ import TrackerTeamsPanel from "~/components/TrackerTeamsPanel";
 import Summary from "~/components/Summary";
 import Scoreboard from "~/components/Scoreboard";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faChartLine, faCheck, faListCheck, faPenToSquare, faTrophy, faUsers } from "@fortawesome/free-solid-svg-icons";
+import { faArrowRotateLeft, faChartLine, faCheck, faListCheck, faPenToSquare, faTrophy, faUsers } from "@fortawesome/free-solid-svg-icons";
 import { useTeams } from "~/context/TeamsContext";
 import { useAccount } from "~/context/AccountContext";
 import { useTrackerClock } from "~/hooks/useTrackerClock";
@@ -584,6 +584,19 @@ export default function Tracker() {
         setTeam2Id(nextTeamId);
     }
 
+    function handleResetToInitialState() {
+      const confirmed = window.confirm(
+        "Revenir à l'état initial ? Cela effacera la préparation et les données du tracker en cours."
+      );
+      if (!confirmed) return;
+
+      resetTrackerInfos();
+      setTeam1Id("");
+      setTeam2Id("");
+      setSaveMessage("");
+      setIsTrackerReady(false);
+    }
+
     const formattedMatchDate = matchDate
         ? new Date(`${matchDate}T00:00:00`).toLocaleDateString("fr-FR")
         : "";
@@ -757,7 +770,17 @@ export default function Tracker() {
             title="Modifier la préparation"
           >
             <FontAwesomeIcon icon={faPenToSquare} className="sm:mr-2" />
-            Modifier la préparation
+            <span className="hidden sm:inline">Modifier la préparation</span>
+          </button>
+          <button
+            type="button"
+            className="group sp-button sp-button-md sp-button-red ml-2"
+            onClick={handleResetToInitialState}
+            aria-label="Réinitialiser"
+            title="Réinitialiser"
+          >
+            <FontAwesomeIcon icon={faArrowRotateLeft} className="sm:mr-2" />
+            <span className="hidden sm:inline">Reset</span>
           </button>
         </p>
         <div className="max-w-3xl mx-auto mb-8"></div>
