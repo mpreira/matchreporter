@@ -12,10 +12,13 @@ import {
 
 interface Props {
   events: Event[];
+  showKickoff: boolean;
+  leftTeamId?: string;
+  rightTeamId?: string;
   remove: (index: number) => void;
 }
 
-export default function EventsList({ events, remove }: Props) {
+export default function EventsList({ events, showKickoff, leftTeamId, rightTeamId, remove }: Props) {
   const prevCountRef = useRef(events.length);
   // flashGeneration est un timestamp (Date.now()) non-null pendant 8 s après l'ajout d'un événement.
   // Pendant ce temps, le premier élément (idx === 0) reçoit l'animation "new-event-flash".
@@ -35,9 +38,14 @@ export default function EventsList({ events, remove }: Props) {
     prevCountRef.current = currentCount;
   }, [events.length]);
 
-  if (events.length === 0) {
+  if (events.length === 0 && !showKickoff) {
     return <p>Aucune action enregistrée.</p>;
   }
+
+  const timelineItems = [
+    ...events.map((event) => ({ kind: "event" as const, event })),
+    ...(showKickoff ? [{ kind: "kickoff" as const }] : []),
+  ];
 
   function renderSummaryEvent(event: Event) {
     if (!event.summaryTable) {
@@ -137,13 +145,32 @@ export default function EventsList({ events, remove }: Props) {
     );
   }
 
+  function isEventOnLeft(event: Event, fallbackIndex: number): boolean {
+    const eventTeamId = event.team?.id;
+    if (eventTeamId && leftTeamId && eventTeamId === leftTeamId) return true;
+    if (eventTeamId && rightTeamId && eventTeamId === rightTeamId) return false;
+    return fallbackIndex % 2 === 0;
+  }
+
   return (
     <ul className="relative space-y-3">
       <div className="pointer-events-none absolute left-4 top-0 bottom-0 w-px bg-neutral-700 sm:left-1/2 sm:-translate-x-1/2" />
 
-      {events.map((event, idx) => {
-        const isLeft = idx % 2 === 0;
-        const flashClass = idx === 0 && flashGeneration !== null ? " new-event-flash" : "";
+      {timelineItems.map((item, idx) => {
+        if (item.kind === "kickoff") {
+          return (
+            <li key="kickoff" className="relative">
+              <div className="w-full rounded border border-blue-400/70 bg-indigo-700 px-3 py-2 text-center text-lg uppercase font-semibold text-white">
+                Coup d'envoi !
+              </div>
+            </li>
+          );
+        }
+
+        const event = item.event;
+        const eventIndex = idx;
+        const isLeft = isEventOnLeft(event, eventIndex);
+        const flashClass = eventIndex === 0 && flashGeneration !== null ? " new-event-flash" : "";
         const minute = formatEventTimeline(event);
 
         return (
@@ -153,7 +180,7 @@ export default function EventsList({ events, remove }: Props) {
                 {minute}
               </div>
               <article className={`rounded border border-neutral-700 bg-neutral-900 p-3 pr-12 relative${flashClass}`}>
-                <button className="sp-button sp-button-xs sp-button-red absolute right-2 top-2" onClick={() => remove(idx)}>
+                <button className="sp-button sp-button-xs sp-button-red absolute right-2 top-2" onClick={() => remove(eventIndex)}>
                   <FontAwesomeIcon icon={faTrashCan} />
                 </button>
                 {renderEventContent(event)}
@@ -163,7 +190,7 @@ export default function EventsList({ events, remove }: Props) {
             <div className="hidden sm:grid sm:grid-cols-[1fr_auto_1fr] sm:items-start sm:gap-4">
               <div className={`${isLeft ? "block" : "invisible"}`}>
                 <article className={`rounded border border-neutral-700 bg-neutral-900 p-3 pr-12 relative${flashClass}`}>
-                  <button className="sp-button sp-button-xs sp-button-red absolute right-2 top-2" onClick={() => remove(idx)}>
+                  <button className="sp-button sp-button-xs sp-button-red absolute right-2 top-2" onClick={() => remove(eventIndex)}>
                     <FontAwesomeIcon icon={faTrashCan} />
                   </button>
                   {renderEventContent(event)}
@@ -178,7 +205,7 @@ export default function EventsList({ events, remove }: Props) {
 
               <div className={`${isLeft ? "invisible" : "block"}`}>
                 <article className={`rounded border border-neutral-700 bg-neutral-900 p-3 pr-12 relative${flashClass}`}>
-                  <button className="sp-button sp-button-xs sp-button-red absolute right-2 top-2" onClick={() => remove(idx)}>
+                  <button className="sp-button sp-button-xs sp-button-red absolute right-2 top-2" onClick={() => remove(eventIndex)}>
                     <FontAwesomeIcon icon={faTrashCan} />
                   </button>
                   {renderEventContent(event)}

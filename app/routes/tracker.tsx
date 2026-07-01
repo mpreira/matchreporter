@@ -58,6 +58,7 @@ export default function Tracker() {
     const [activeCommand, setActiveCommand] = useState<string | null>(null);
     const [actionTab, setActionTab] = useState<TrackerActionTab>("events");
     const [savedTrackingSignature, setSavedTrackingSignature] = useState<string | null>(null);
+    const [kickoffShown, setKickoffShown] = useState(false);
 
     const {
       team1Id,
@@ -175,6 +176,7 @@ export default function Tracker() {
         resetStats();
         clearLiveState();
         setSavedTrackingSignature(null);
+      setKickoffShown(false);
       resetMatchInfo();
     }
 
@@ -456,7 +458,15 @@ export default function Tracker() {
         <TimerControls
           time={time}
           running={running}
-          onStartStop={() => setRunning((r) => !r)}
+          onStartStop={() =>
+            setRunning((currentRunning) => {
+              const nextRunning = !currentRunning;
+              if (!currentRunning && nextRunning && time === 0 && !kickoffShown) {
+                setKickoffShown(true);
+              }
+              return nextRunning;
+            })
+          }
           onAdjust={adjustTime}
           onReset={handleResetTracker}
           manualTimeInput={manualTimeInput}
@@ -521,6 +531,9 @@ export default function Tracker() {
           <div className="max-h-[28rem] overflow-y-auto pr-1">
             <EventsList
               events={matchFactsEvents}
+              showKickoff={kickoffShown}
+              leftTeamId={team1Id || undefined}
+              rightTeamId={team2Id || undefined}
               remove={(displayIndex) =>
                 removeEvent(events.length - 1 - displayIndex)
               }
