@@ -79,6 +79,10 @@ export default function Tracker() {
         () => new Map(rosters.map((roster) => [roster.id, roster.nickname || ""])),
         [rosters]
     );
+    const rosterNameById = useMemo(
+      () => new Map(rosters.map((roster) => [roster.id, roster.name])),
+      [rosters]
+    );
     
     // Si un contexte de match est sélectionné, on filtre les équipes sur ce libellé (ex: J3 ou Bordeaux)
     // puis on y injecte le surnom de l'effectif associé.
@@ -160,6 +164,24 @@ export default function Tracker() {
     function getDisplayTeamLabel(team: { name: string; nickname?: string }): string {
         return team.nickname || team.name.replace(/\s+J\d+$/, "");
     }
+
+    function getRosterTeamLabel(team: { name: string; rosterId?: string }): string {
+      if (team.rosterId) {
+        const rosterName = rosterNameById.get(team.rosterId);
+        if (rosterName) return rosterName;
+      }
+      return team.name.replace(/\s+J\d+$/, "");
+    }
+
+    const mobileMatchTitle =
+      selectedTeams.length === 2
+        ? `${getDisplayTeamLabel(selectedTeams[0])} v ${getDisplayTeamLabel(selectedTeams[1])}`
+        : "Feuille de match";
+
+    const desktopMatchTitle =
+      selectedTeams.length === 2
+        ? `${getRosterTeamLabel(selectedTeams[0])} v ${getRosterTeamLabel(selectedTeams[1])}`
+        : "Feuille de match";
 
     const {
         teamPenalties,
@@ -481,7 +503,8 @@ export default function Tracker() {
     return (
       <main className="sp-page min-h-0 space-y-6 pb-40 xl:pb-10">
         <h1 className="leading-[0.95] font-bold tracking-[-0.03em] text-4xl text-center text-white">
-          Feuille de match
+          <span className="lg:hidden">{mobileMatchTitle}</span>
+          <span className="hidden lg:inline">{desktopMatchTitle}</span>
         </h1>
         <p className="text-foreground max-w-3xl text-base font-light text-white text-balance sm:text-lg text-center mx-auto">
           <FontAwesomeIcon icon={faTrophy} className="sm:mr-1 mr-2" />
