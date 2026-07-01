@@ -25,6 +25,7 @@ import { useTrackerMatchPresentation } from "~/hooks/useTrackerMatchPresentation
 import { useLiveBroadcast } from "~/hooks/useLiveBroadcast";
 import { buildStatsSummaryEvent } from "~/utils/trackerSummaryEvent";
 import { Top14_Stadiums_2025_2026 } from "~/utils/stadiums";
+import TrackerMatchEvents from "~/components/TrackerMatchEvents";
 
 export function meta({}: Route.MetaArgs) {
   return [{ title: "Match Reporter" }];
@@ -479,6 +480,13 @@ export default function Tracker() {
             setMatchEnded(true);
             setRunning(false);
           }}
+        />
+        <TrackerMatchEvents
+          events={events}
+          team1Id={team1Id}
+          team2Id={team2Id}
+          team1Label={selectedTeams[0] ? getDisplayTeamLabel(selectedTeams[0]) : "Équipe 1"}
+          team2Label={selectedTeams[1] ? getDisplayTeamLabel(selectedTeams[1]) : "Équipe 2"}
         />
         <TrackerActionWorkspace
           actionTab={actionTab}
