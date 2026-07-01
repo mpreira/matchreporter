@@ -19,11 +19,12 @@ import { useAccount } from "~/context/AccountContext";
 import { useTrackerClock } from "~/hooks/useTrackerClock";
 import { useTrackerEvents } from "~/hooks/useTrackerEvents";
 import { useTrackerStats } from "~/hooks/useTrackerStats";
+import { useTrackerSetup } from "~/hooks/useTrackerSetup";
 import { useLiveBroadcast } from "~/hooks/useLiveBroadcast";
 import { getTimelineMomentFromClock } from "~/utils/TimeUtils";
 import { Top14_Stadiums_2025_2026 } from "~/utils/stadiums";
 import TrackerNotesPanel from "~/components/TrackerNotesPanel";
-import { faCalendarDays, faClipboard, faHouse, faUser, faEye } from "@fortawesome/free-regular-svg-icons";
+import { faCalendarDays, faClipboard, faHouse, faUser } from "@fortawesome/free-regular-svg-icons";
 
 export function meta({}: Route.MetaArgs) {
     return [{ title: "Match Reporter" }];
@@ -47,18 +48,6 @@ const COMMAND_TYPES = [
 ];
 
 const TRACKER_ACTION_TAB_STORAGE_KEY = "sidepitcher.tracker.actionTab";
-const TRACKER_MATCH_INFO_STORAGE_KEY = "sidepitcher.tracker.matchInfo";
-
-interface TrackerMatchInfo {
-    field: string;
-    referee: string;
-    matchDate: string;
-}
-
-function getTodayIsoDate(): string {
-    return new Date().toISOString().slice(0, 10);
-}
-
 export default function Tracker() {
     const { account } = useAccount();
     const {
@@ -101,23 +90,41 @@ export default function Tracker() {
         [teams, matchDayLabel, rosterNicknameById]
     );
     
-    const [team1Id, setTeam1Id] = useState<string>("");
-    const [team2Id, setTeam2Id] = useState<string>("");
     const [activeCommand, setActiveCommand] = useState<string | null>(null);
     const [actionTab, setActionTab] = useState<"events" | "stats" | "teams"| "notes" >("events");
-    const [field, setField] = useState<string>("");
-    const [fieldInput, setFieldInput] = useState<string>("");
-    const [matchDate, setMatchDate] = useState<string>(getTodayIsoDate());
-    const [matchDateInput, setMatchDateInput] = useState<string>(getTodayIsoDate());
-    const [referee, setReferee] = useState<string>("");
-    const [refereeInput, setRefereeInput] = useState<string>("");
-    const [showMatchInfoEditor, setShowMatchInfoEditor] = useState(false);
-    const [saveMessage, setSaveMessage] = useState<string>("");
     const [savedTrackingSignature, setSavedTrackingSignature] = useState<string | null>(null);
-    const [isTrackerReady, setIsTrackerReady] = useState(false);
-    const didInitialAutoOpenRef = useRef(false);
     const contextInitializedRef = useRef(false);
     const prevContextRef = useRef<{ matchDay: string | number; championship: string; sport: string } | null>(null);
+
+    const {
+      team1Id,
+      setTeam1Id,
+      team2Id,
+      setTeam2Id,
+      field,
+      fieldInput,
+      setFieldInput,
+      matchDate,
+      matchDateInput,
+      setMatchDateInput,
+      referee,
+      refereeInput,
+      setRefereeInput,
+      showMatchInfoEditor,
+      setShowMatchInfoEditor,
+      saveMessage,
+      isTrackerReady,
+      setIsTrackerReady,
+      setupCanSubmit,
+      applyMatchInfo,
+      syncRefereeFromEvent,
+      handleSetupSubmit,
+      resetMatchInfo,
+      resetPreparationState,
+    } = useTrackerSetup({
+      championship,
+      matchDay,
+    });
 
     const selectedTeams = useMemo(
         () => [
@@ -186,109 +193,11 @@ export default function Tracker() {
     }, [actionTab]);
 
     useEffect(() => {
-        const storedRaw = window.localStorage.getItem(TRACKER_MATCH_INFO_STORAGE_KEY);
-        if (!storedRaw) return;
-
-        try {
-            const stored = JSON.parse(storedRaw) as Partial<TrackerMatchInfo>;
-            const storedField = (stored.field || "").trim();
-            const storedReferee = (stored.referee || "").trim();
-            const storedDate = (stored.matchDate || "").trim();
-
-            setField(storedField);
-            setFieldInput(storedField);
-            setReferee(storedReferee);
-            setRefereeInput(storedReferee);
-            setMatchDate(storedDate || getTodayIsoDate());
-            setMatchDateInput(storedDate || getTodayIsoDate());
-        } catch {
-            setField("");
-            setFieldInput("");
-            setReferee("");
-            setRefereeInput("");
-            setMatchDate(getTodayIsoDate());
-            setMatchDateInput(getTodayIsoDate());
-        }
-    }, []);
-
-    useEffect(() => {
         const knownRef = events.find((event) => event.ref)?.ref;
-        if (knownRef && knownRef !== referee) {
-            setReferee(knownRef);
-            setRefereeInput(knownRef);
-            window.localStorage.setItem(
-                TRACKER_MATCH_INFO_STORAGE_KEY,
-                JSON.stringify({
-                    field,
-                    referee: knownRef,
-                    matchDate,
-                })
-            );
-        }
-    }, [events, referee, field, matchDate]);
-
-    function applyMatchInfo(options?: { closeEditor?: boolean }): boolean {
-      const closeEditor = options?.closeEditor ?? true;
-        const nextField = fieldInput.trim();
-        const nextReferee = refereeInput.trim();
-        const nextDate = matchDateInput || getTodayIsoDate();
-
-      if (!nextField || !nextReferee || !nextDate) {
-        setSaveMessage("Renseignez date, terrain et arbitre.");
-        return false;
+      if (knownRef) {
+        syncRefereeFromEvent(knownRef);
       }
-
-        setField(nextField);
-        setReferee(nextReferee);
-        setMatchDate(nextDate);
-
-        window.localStorage.setItem(
-            TRACKER_MATCH_INFO_STORAGE_KEY,
-            JSON.stringify({
-                field: nextField,
-                referee: nextReferee,
-                matchDate: nextDate,
-            })
-        );
-            if (closeEditor) {
-              setShowMatchInfoEditor(false);
-            }
-            return true;
-    }
-
-    // Charge la sélection d'équipes sauvegardée pour le championnat + la journée en cours.
-    // On utilise un flag "cancelled" pour ignorer la réponse si le composant s'est démonté entre-temps.
-    useEffect(() => {
-        if (!championship || !matchDay) return;
-
-        const matchDayNum = typeof matchDay === "number" ? matchDay : parseInt(matchDay, 10);
-        if (isNaN(matchDayNum)) return;
-
-        let cancelled = false;
-
-        fetch(`/api/match-day-teams?championship=${encodeURIComponent(championship)}&matchDay=${matchDayNum}`)
-            .then((r) => r.json())
-            .then((data) => {
-                if (cancelled) return;
-                const saved = data?.selection as { team1Id?: string; team2Id?: string } | null;
-                if (!saved?.team1Id || !saved?.team2Id) {
-                    setTeam1Id("");
-                    setTeam2Id("");
-                    return;
-                }
-                setTeam1Id(saved.team1Id);
-                setTeam2Id(saved.team2Id);
-            })
-            .catch(() => {
-                if (cancelled) return;
-                setTeam1Id("");
-                setTeam2Id("");
-            });
-
-        return () => {
-            cancelled = true;
-        };
-    }, [championship, matchDay]);
+    }, [events, syncRefereeFromEvent]);
 
     function resetTrackerInfos() {
         resetEvents();
@@ -297,14 +206,7 @@ export default function Tracker() {
         resetStats();
         clearLiveState();
         setSavedTrackingSignature(null);
-        setField("");
-        setFieldInput("");
-        setReferee("");
-        setRefereeInput("");
-        const today = getTodayIsoDate();
-        setMatchDate(today);
-        setMatchDateInput(today);
-        window.localStorage.removeItem(TRACKER_MATCH_INFO_STORAGE_KEY);
+      resetMatchInfo();
     }
 
     // Détecte un changement de contexte (championnat / journée / sport) après le premier rendu.
@@ -398,56 +300,6 @@ export default function Tracker() {
 
         handleAddEvent(summaryEvent);
     }
-
-    async function saveTeamSelection(): Promise<boolean> {
-        if (!team1Id || !team2Id || !championship || !matchDay) {
-            setSaveMessage("Veuillez sélectionner les deux équipes.");
-        return false;
-        }
-        if (team1Id === team2Id) {
-            setSaveMessage("Les équipes doivent être différentes.");
-        return false;
-        }
-        try {
-            // Save to API
-            await fetch("/api/match-day-teams", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    championship,
-                    matchDay: typeof matchDay === "number" ? matchDay : parseInt(matchDay, 10),
-                    team1Id,
-                    team2Id,
-                }),
-            });
-            
-            setSaveMessage("Affiche enregistrée ✓");
-            setTimeout(() => setSaveMessage(""), 3000);
-            return true;
-        } catch (e) {
-            setSaveMessage("Erreur lors de la sauvegarde.");
-            return false;
-        }
-    }
-
-        useEffect(() => {
-          if (didInitialAutoOpenRef.current || isTrackerReady) return;
-          const teamsReady = !!team1Id && !!team2Id && team1Id !== team2Id;
-          const infosReady = !!matchDate && !!field.trim() && !!referee.trim();
-          if (teamsReady && infosReady) {
-            setIsTrackerReady(true);
-            didInitialAutoOpenRef.current = true;
-          }
-        }, [isTrackerReady, team1Id, team2Id, matchDate, field, referee]);
-
-        async function handleSetupSubmit(event: React.FormEvent<HTMLFormElement>) {
-          event.preventDefault();
-          const hasValidMatchInfo = applyMatchInfo({ closeEditor: false });
-          if (!hasValidMatchInfo) return;
-          const teamsSaved = await saveTeamSelection();
-          if (!teamsSaved) return;
-          setIsTrackerReady(true);
-        }
 
     const hasTrackingContent =
         time !== 0 ||
@@ -592,23 +444,12 @@ export default function Tracker() {
       if (!confirmed) return;
 
       resetTrackerInfos();
-      setTeam1Id("");
-      setTeam2Id("");
-      setSaveMessage("");
-      setIsTrackerReady(false);
+      resetPreparationState();
     }
 
     const formattedMatchDate = matchDate
         ? new Date(`${matchDate}T00:00:00`).toLocaleDateString("fr-FR")
         : "";
-
-    const setupCanSubmit =
-        !!team1Id &&
-        !!team2Id &&
-        team1Id !== team2Id &&
-        !!matchDateInput &&
-        !!fieldInput.trim() &&
-        !!refereeInput.trim();
 
     if (!isTrackerReady) {
         return (
