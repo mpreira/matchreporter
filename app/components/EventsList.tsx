@@ -15,10 +15,12 @@ interface Props {
   showKickoff: boolean;
   leftTeamId?: string;
   rightTeamId?: string;
+  allowRemove?: boolean;
+  showSummaryTables?: boolean;
   remove: (index: number) => void;
 }
 
-export default function EventsList({ events, showKickoff, leftTeamId, rightTeamId, remove }: Props) {
+export default function EventsList({ events, showKickoff, leftTeamId, rightTeamId, allowRemove = true, showSummaryTables = true, remove }: Props) {
   const prevCountRef = useRef(events.length);
   // flashGeneration est un timestamp (Date.now()) non-null pendant 8 s après l'ajout d'un événement.
   // Pendant ce temps, le premier élément (idx === 0) reçoit l'animation "new-event-flash".
@@ -200,21 +202,31 @@ export default function EventsList({ events, showKickoff, leftTeamId, rightTeamI
         if (isHalfTimeSummary || isFullTimeSummary) {
           return (
             <li key={idx} className="relative space-y-2">
-              <div className="w-full rounded border border-neutral-200 bg-white px-3 py-2 text-center text-lg uppercase font-semibold tracking-wide text-black shadow-sm">
+              <div
+                className={
+                  isFullTimeSummary
+                    ? "w-full rounded border border-red-400/70 bg-red-700 px-3 py-2 text-center text-lg uppercase font-semibold tracking-wide text-white shadow-sm"
+                    : "w-full rounded border border-neutral-200 bg-white px-3 py-2 text-center text-lg uppercase font-semibold tracking-wide text-black shadow-sm"
+                }
+              >
                 {isHalfTimeSummary ? getHalfTimeBannerText(event) : getFullTimeBannerText(event)}
               </div>
 
-              <div className="relative">
-                <div className={`absolute left-1/2 -top-2 z-10 -translate-x-1/2 rounded px-2 py-0.5 text-[10px] font-bold text-white ${getMinuteBadgeClass(event)}`}>
-                  {minute}
+              {showSummaryTables && (
+                <div className="relative">
+                  <div className={`absolute left-1/2 -top-2 z-10 -translate-x-1/2 rounded px-2 py-0.5 text-[10px] font-bold text-white ${getMinuteBadgeClass(event)}`}>
+                    {minute}
+                  </div>
+                  <article className={`w-full rounded border border-neutral-700 bg-neutral-900 p-3 pt-5 pr-12 relative${flashClass}`}>
+                    {allowRemove && (
+                      <button className="sp-button sp-button-xs sp-button-red absolute right-2 top-2" onClick={() => remove(eventIndex)}>
+                        <FontAwesomeIcon icon={faTrashCan} />
+                      </button>
+                    )}
+                    {renderSummaryEvent(event, true)}
+                  </article>
                 </div>
-                <article className={`w-full rounded border border-neutral-700 bg-neutral-900 p-3 pt-5 pr-12 relative${flashClass}`}>
-                  <button className="sp-button sp-button-xs sp-button-red absolute right-2 top-2" onClick={() => remove(eventIndex)}>
-                    <FontAwesomeIcon icon={faTrashCan} />
-                  </button>
-                  {renderSummaryEvent(event, true)}
-                </article>
-              </div>
+              )}
             </li>
           );
         }
@@ -226,9 +238,11 @@ export default function EventsList({ events, showKickoff, leftTeamId, rightTeamI
                 {minute}
               </div>
               <article className={`rounded border border-neutral-700 bg-neutral-900 p-3 pr-12 relative${flashClass}`}>
-                <button className="sp-button sp-button-xs sp-button-red absolute right-2 top-2" onClick={() => remove(eventIndex)}>
-                  <FontAwesomeIcon icon={faTrashCan} />
-                </button>
+                {allowRemove && (
+                  <button className="sp-button sp-button-xs sp-button-red absolute right-2 top-2" onClick={() => remove(eventIndex)}>
+                    <FontAwesomeIcon icon={faTrashCan} />
+                  </button>
+                )}
                 {renderEventContent(event)}
               </article>
             </div>
@@ -236,9 +250,11 @@ export default function EventsList({ events, showKickoff, leftTeamId, rightTeamI
             <div className="hidden sm:grid sm:grid-cols-[1fr_auto_1fr] sm:items-start sm:gap-4">
               <div className={`${isLeft ? "block" : "invisible"}`}>
                 <article className={`rounded border border-neutral-700 bg-neutral-900 p-3 pr-12 relative${flashClass}`}>
-                  <button className="sp-button sp-button-xs sp-button-red absolute right-2 top-2" onClick={() => remove(eventIndex)}>
-                    <FontAwesomeIcon icon={faTrashCan} />
-                  </button>
+                  {allowRemove && (
+                    <button className="sp-button sp-button-xs sp-button-red absolute right-2 top-2" onClick={() => remove(eventIndex)}>
+                      <FontAwesomeIcon icon={faTrashCan} />
+                    </button>
+                  )}
                   {renderEventContent(event)}
                 </article>
               </div>
@@ -251,9 +267,11 @@ export default function EventsList({ events, showKickoff, leftTeamId, rightTeamI
 
               <div className={`${isLeft ? "invisible" : "block"}`}>
                 <article className={`rounded border border-neutral-700 bg-neutral-900 p-3 pr-12 relative${flashClass}`}>
-                  <button className="sp-button sp-button-xs sp-button-red absolute right-2 top-2" onClick={() => remove(eventIndex)}>
-                    <FontAwesomeIcon icon={faTrashCan} />
-                  </button>
+                  {allowRemove && (
+                    <button className="sp-button sp-button-xs sp-button-red absolute right-2 top-2" onClick={() => remove(eventIndex)}>
+                      <FontAwesomeIcon icon={faTrashCan} />
+                    </button>
+                  )}
                   {renderEventContent(event)}
                 </article>
               </div>

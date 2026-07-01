@@ -66,7 +66,7 @@ function formatTryLines(events: Event[]): string[] {
         }
 
         if (event.type === "Essai de pénalité") {
-            penaltyTryLines.push(formatEventLine(event));
+            penaltyTryLines.push(`Essai de pénalité (${getEventMinuteLabel(event)})`);
         }
     }
 

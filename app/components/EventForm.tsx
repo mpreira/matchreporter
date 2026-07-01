@@ -301,7 +301,7 @@ export default function EventForm({
                 </select>
                 </div>
             </>
-            ) : (
+            ) : type === "Essai de pénalité" ? null : (
             <div className="sp-input-shell">
                 <label className="sp-input-label" htmlFor="playerSelect">Joueur</label>
                 <select

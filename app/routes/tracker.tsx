@@ -26,6 +26,7 @@ import { useLiveBroadcast } from "~/hooks/useLiveBroadcast";
 import { buildStatsSummaryEvent } from "~/utils/trackerSummaryEvent";
 import { Top14_Stadiums_2025_2026 } from "~/utils/stadiums";
 import TrackerMatchEvents from "~/components/TrackerMatchEvents";
+import TrackerMatchTimeline from "~/components/TrackerMatchTimeline";
 
 export function meta({}: Route.MetaArgs) {
   return [{ title: "Match Reporter" }];
@@ -463,7 +464,12 @@ export default function Tracker() {
           onStartStop={() =>
             setRunning((currentRunning) => {
               const nextRunning = !currentRunning;
-              if (!currentRunning && nextRunning && time === 0 && !kickoffShown) {
+              if (
+                !currentRunning &&
+                nextRunning &&
+                time === 0 &&
+                !kickoffShown
+              ) {
                 setKickoffShown(true);
               }
               return nextRunning;
@@ -493,13 +499,29 @@ export default function Tracker() {
             setRunning(false);
           }}
         />
+        <TrackerMatchTimeline
+          events={events}
+          team1Id={team1Id}
+          team2Id={team2Id}
+          team1Label={
+            selectedTeams[0]
+              ? getDisplayTeamLabel(selectedTeams[0])
+              : "Équipe 1"
+          }
+          team2Label={
+            selectedTeams[1]
+              ? getDisplayTeamLabel(selectedTeams[1])
+              : "Équipe 2"
+          }
+        />
+        {/* à voir si ce n'est pas trop redondant
         <TrackerMatchEvents
           events={events}
           team1Id={team1Id}
           team2Id={team2Id}
           team1Label={selectedTeams[0] ? getDisplayTeamLabel(selectedTeams[0]) : "Équipe 1"}
           team2Label={selectedTeams[1] ? getDisplayTeamLabel(selectedTeams[1]) : "Équipe 2"}
-        />
+        />*/}
         <TrackerActionWorkspace
           actionTab={actionTab}
           onActionTabChange={setActionTab}
