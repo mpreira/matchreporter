@@ -114,6 +114,7 @@ export default function Tracker() {
     const [saveMessage, setSaveMessage] = useState<string>("");
     const [savedTrackingSignature, setSavedTrackingSignature] = useState<string | null>(null);
     const [isTrackerReady, setIsTrackerReady] = useState(false);
+    const didInitialAutoOpenRef = useRef(false);
     const contextInitializedRef = useRef(false);
     const prevContextRef = useRef<{ matchDay: string | number; championship: string; sport: string } | null>(null);
 
@@ -429,11 +430,12 @@ export default function Tracker() {
     }
 
         useEffect(() => {
-          if (isTrackerReady) return;
+          if (didInitialAutoOpenRef.current || isTrackerReady) return;
           const teamsReady = !!team1Id && !!team2Id && team1Id !== team2Id;
           const infosReady = !!matchDate && !!field.trim() && !!referee.trim();
           if (teamsReady && infosReady) {
             setIsTrackerReady(true);
+            didInitialAutoOpenRef.current = true;
           }
         }, [isTrackerReady, team1Id, team2Id, matchDate, field, referee]);
 
@@ -750,19 +752,11 @@ export default function Tracker() {
           <button
             type="button"
             className="group sp-button sp-button-md sp-button-yellow ml-4 md:ml-2"
-            onClick={() => setShowMatchInfoEditor(true)}
-            aria-label="Editer les infos"
-            title="Editer les infos"
-          >
-            <FontAwesomeIcon icon={faPenToSquare} />
-          </button>
-          <button
-            type="button"
-            className="group sp-button sp-button-md sp-button-neutral ml-2"
             onClick={() => setIsTrackerReady(false)}
             aria-label="Modifier la préparation"
             title="Modifier la préparation"
           >
+            <FontAwesomeIcon icon={faPenToSquare} className="sm:mr-2" />
             Modifier la préparation
           </button>
         </p>
